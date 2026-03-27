@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PingDoctor Options</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h2>PingDoctor Settings</h2>
+      <form id="settings-form">
+        <label>
+          Router IP
+          <input id="router-ip" name="routerIp" type="text" placeholder="192.168.1.1" required />
+        </label>
+
+        <label>
+          Poll Interval
+          <select id="poll-interval" name="pollIntervalSec">
+            <option value="15">15 seconds</option>
+            <option value="30">30 seconds</option>
+            <option value="60">60 seconds</option>
+          </select>
+        </label>
+
+        <details>
+          <summary>Advanced custom targets</summary>
+          <label>
+            Gateway target URL
+            <input id="gateway-target" name="gateway" type="url" placeholder="http://8.8.8.8" />
+          </label>
+          <label>
+            Internet target URL
+            <input id="internet-target" name="internet" type="url" placeholder="https://connectivitycheck.gstatic.com/generate_204" />
+          </label>
+        </details>
+
+        <button type="submit">Save</button>
+      </form>
+
+      <hr />
+      <button id="export-data" class="secondary" type="button">Export data as JSON</button>
+      <button id="clear-data" class="contrast" type="button">Clear all data</button>
+      <p id="status"></p>
+    </main>
+
+    <script type="module" src="./options.ts"></script>
+  </body>
+</html>
