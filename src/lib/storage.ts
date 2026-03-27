@@ -1,17 +1,17 @@
-import { affectedLayers, isOutageSample } from './diagnose';
-import type { DaySummary, Diagnosis, Outage, Sample, Settings, StorageShape } from '../types';
+import { failedTargetIds, isOutageSample } from './diagnose';
+import type { DaySummary, Diagnosis, Outage, Sample, Settings, StorageShape, TargetConfig, TargetId } from '../types';
 
 const STORAGE_KEY = 'pingdoctor';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RETENTION_MS = 7 * DAY_MS;
 
 export const DEFAULT_SETTINGS: Settings = {
-  routerIp: '192.168.1.1',
   pollIntervalSec: 30,
-  targets: {
-    gateway: 'http://8.8.8.8',
-    internet: 'https://connectivitycheck.gstatic.com/generate_204'
-  }
+  targets: [
+    { id: 'router', label: 'Wifi Router', address: '192.168.1.1', enabled: true },
+    { id: 'modem', label: 'Internet Modem', address: '8.8.8.8', enabled: true },
+    { id: 'site', label: 'Internet Site', address: 'connectivitycheck.gstatic.com/generate_204', enabled: true }
+  ]
 };
 
 const DEFAULT_STORAGE: StorageShape = {
@@ -40,28 +40,63 @@ function startOfLocalDay(ts: number): number {
   return d.getTime();
 }
 
-function avg(values: Array<number | null>): number {
-  const list = values.filter((x): x is number => x !== null);
-  if (list.length === 0) {
-    return 0;
+function isTargetConfig(value: unknown): value is TargetConfig {
+  const target = value as TargetConfig;
+  return (
+    !!target &&
+    typeof target.id === 'string' &&
+    target.id.length > 0 &&
+    typeof target.label === 'string' &&
+    typeof target.address === 'string' &&
+    typeof target.enabled === 'boolean'
+  );
+}
+
+function sanitizeTargets(targets: TargetConfig[]): TargetConfig[] {
+  const seen = new Set<string>();
+  const next: TargetConfig[] = [];
+
+  for (const target of targets) {
+    if (!isTargetConfig(target)) {
+      continue;
+    }
+
+    if (seen.has(target.id)) {
+      continue;
+    }
+
+    seen.add(target.id);
+    next.push({
+      id: target.id,
+      label: target.label.trim() || 'Target',
+      address: target.address.trim(),
+      enabled: target.enabled
+    });
   }
 
-  return Number((list.reduce((a, b) => a + b, 0) / list.length).toFixed(1));
+  return next;
 }
 
 function normalize(data?: Partial<StorageShape>): StorageShape {
+  const targets = Array.isArray(data?.settings?.targets)
+    ? sanitizeTargets(data?.settings?.targets ?? [])
+    : [];
+
+  if (targets.length === 0) {
+    return structuredClone(DEFAULT_STORAGE);
+  }
+
+  const pollInterval = data?.settings?.pollIntervalSec;
+  const pollIntervalSec = pollInterval === 15 || pollInterval === 30 || pollInterval === 60 ? pollInterval : 30;
+
   return {
     settings: {
-      ...DEFAULT_SETTINGS,
-      ...(data?.settings ?? {}),
-      targets: {
-        ...DEFAULT_SETTINGS.targets,
-        ...(data?.settings?.targets ?? {})
-      }
+      pollIntervalSec,
+      targets
     },
-    samples: data?.samples ?? [],
-    outages: data?.outages ?? [],
-    daySummaries: data?.daySummaries ?? [],
+    samples: Array.isArray(data?.samples) ? data.samples : [],
+    outages: Array.isArray(data?.outages) ? data.outages : [],
+    daySummaries: Array.isArray(data?.daySummaries) ? data.daySummaries : [],
     state: {
       ...DEFAULT_STORAGE.state,
       ...(data?.state ?? {})
@@ -90,13 +125,14 @@ export async function getSettings(): Promise<Settings> {
 export async function updateSettings(next: Partial<Settings>): Promise<Settings> {
   const data = await readStorage();
   data.settings = {
-    ...data.settings,
-    ...next,
-    targets: {
-      ...data.settings.targets,
-      ...(next.targets ?? {})
-    }
+    pollIntervalSec: next.pollIntervalSec ?? data.settings.pollIntervalSec,
+    targets: next.targets ? sanitizeTargets(next.targets) : data.settings.targets
   };
+
+  if (data.settings.targets.length === 0) {
+    data.settings.targets = structuredClone(DEFAULT_SETTINGS.targets);
+  }
+
   await writeStorage(data);
   return data.settings;
 }
@@ -111,15 +147,19 @@ export async function clearAllData(): Promise<void> {
   await writeStorage({ ...DEFAULT_STORAGE, settings: (await readStorage()).settings });
 }
 
-function mergeOutageLayers(outage: Outage, sample: Sample): Outage {
-  const next = new Set([...outage.affectedLayers, ...affectedLayers(sample)]);
+function mergeOutageTargets(outage: Outage, sample: Sample): Outage {
+  const next = new Set([...outage.affectedTargetIds, ...failedTargetIds(sample)]);
   return {
     ...outage,
-    affectedLayers: Array.from(next)
+    affectedTargetIds: Array.from(next)
   };
 }
 
-export async function recordSample(sample: Sample, diagnosis: Diagnosis): Promise<void> {
+function isHealthySample(sample: Sample): boolean {
+  return sample.enabledTargetIds.every((targetId) => sample.results[targetId] !== null);
+}
+
+export async function recordSample(sample: Sample, diagnosis: Diagnosis, primaryTargetId: TargetId | null): Promise<void> {
   const data = await readStorage();
   data.samples.push(sample);
   data.state.lastCheckedAt = sample.ts;
@@ -128,7 +168,7 @@ export async function recordSample(sample: Sample, diagnosis: Diagnosis): Promis
 
   if (data.state.currentOutage) {
     if (isOutage) {
-      data.state.currentOutage = mergeOutageLayers(data.state.currentOutage, sample);
+      data.state.currentOutage = mergeOutageTargets(data.state.currentOutage, sample);
     } else {
       data.state.currentOutage.end = sample.ts;
       data.outages.push(data.state.currentOutage);
@@ -138,8 +178,9 @@ export async function recordSample(sample: Sample, diagnosis: Diagnosis): Promis
     data.state.currentOutage = {
       start: sample.ts,
       end: null,
-      affectedLayers: affectedLayers(sample),
-      diagnosis
+      affectedTargetIds: failedTargetIds(sample),
+      diagnosis,
+      primaryTargetId
     };
   }
 
@@ -147,17 +188,30 @@ export async function recordSample(sample: Sample, diagnosis: Diagnosis): Promis
 }
 
 function summarizeDay(date: string, samples: Sample[], outages: Outage[]): DaySummary {
-  const healthyCount = samples.filter((s) => s.router !== null && s.gateway !== null && s.internet !== null).length;
+  const healthyCount = samples.filter((s) => isHealthySample(s)).length;
   const uptimePct = samples.length === 0 ? 100 : Number(((healthyCount / samples.length) * 100).toFixed(2));
+
+  const targetIds = new Set<string>();
+  for (const sample of samples) {
+    for (const targetId of sample.enabledTargetIds) {
+      targetIds.add(targetId);
+    }
+  }
+
+  const avgLatencyByTarget: Record<string, number> = {};
+  for (const targetId of targetIds) {
+    const values = samples
+      .map((s) => s.results[targetId])
+      .filter((value): value is number => typeof value === 'number');
+
+    avgLatencyByTarget[targetId] =
+      values.length > 0 ? Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)) : 0;
+  }
 
   return {
     date,
     uptimePct,
-    avgLatency: {
-      router: avg(samples.map((s) => s.router)),
-      gateway: avg(samples.map((s) => s.gateway)),
-      internet: avg(samples.map((s) => s.internet))
-    },
+    avgLatencyByTarget,
     outages
   };
 }

@@ -1,43 +1,40 @@
-export type Layer = 'router' | 'gateway' | 'internet';
+export type TargetId = string;
+
+export type TargetConfig = {
+  id: TargetId;
+  label: string;
+  address: string;
+  enabled: boolean;
+};
 
 export type Sample = {
   ts: number;
-  router: number | null;
-  gateway: number | null;
-  internet: number | null;
+  results: Record<TargetId, number | null>;
+  enabledTargetIds: TargetId[];
   networkChanged?: boolean;
   localIp?: string | null;
 };
 
-export type Diagnosis = 'wifi' | 'isp' | 'internet' | 'unknown';
+export type Diagnosis = 'target' | 'unknown';
 
 export type Outage = {
   start: number;
   end: number | null;
-  affectedLayers: Layer[];
+  affectedTargetIds: TargetId[];
   diagnosis: Diagnosis;
+  primaryTargetId: TargetId | null;
 };
 
 export type DaySummary = {
   date: string;
   uptimePct: number;
-  avgLatency: {
-    router: number;
-    gateway: number;
-    internet: number;
-  };
+  avgLatencyByTarget: Record<TargetId, number>;
   outages: Outage[];
 };
 
-export type Targets = {
-  gateway: string;
-  internet: string;
-};
-
 export type Settings = {
-  routerIp: string;
   pollIntervalSec: 15 | 30 | 60;
-  targets: Targets;
+  targets: TargetConfig[];
 };
 
 export type RuntimeState = {

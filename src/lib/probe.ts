@@ -1,10 +1,10 @@
-import type { Sample, Settings } from '../types';
+import type { Sample, Settings, TargetId } from '../types';
 
 const DEFAULT_TIMEOUT_MS = 2000;
 
 type ProbeValue = number | null;
 
-type ProbeResult = Pick<Sample, 'router' | 'gateway' | 'internet'>;
+type ProbeResult = Record<TargetId, ProbeValue>;
 
 async function timedFetch(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ProbeValue> {
   const start = performance.now();
@@ -31,14 +31,23 @@ async function timedFetch(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<
   }
 }
 
+function toUrl(address: string): string {
+  return address.startsWith('http://') || address.startsWith('https://') ? address : `http://${address}`;
+}
+
 export async function probeAll(settings: Settings, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ProbeResult> {
-  const routerUrl = settings.routerIp.startsWith('http') ? settings.routerIp : `http://${settings.routerIp}`;
+  const enabledTargets = settings.targets.filter((target) => target.enabled);
+  const entries = await Promise.all(
+    enabledTargets.map(async (target) => [target.id, await timedFetch(toUrl(target.address), timeoutMs)] as const)
+  );
 
-  const [router, gateway, internet] = await Promise.all([
-    timedFetch(routerUrl, timeoutMs),
-    timedFetch(settings.targets.gateway, timeoutMs),
-    timedFetch(settings.targets.internet, timeoutMs)
-  ]);
+  return Object.fromEntries(entries);
+}
 
-  return { router, gateway, internet };
+export function probeValue(sample: Sample | undefined, targetId: TargetId): number | null {
+  if (!sample) {
+    return null;
+  }
+
+  return targetId in sample.results ? sample.results[targetId] : null;
 }

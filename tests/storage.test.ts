@@ -21,8 +21,16 @@ describe('storage lifecycle', () => {
   });
 
   it('opens and closes outages based on subsequent healthy sample', async () => {
-    await recordSample({ ts: 1, router: null, gateway: null, internet: null }, 'wifi');
-    await recordSample({ ts: 2, router: 8, gateway: 11, internet: 20 }, 'unknown');
+    await recordSample(
+      { ts: 1, enabledTargetIds: ['router'], results: { router: null } },
+      'target',
+      'router'
+    );
+    await recordSample(
+      { ts: 2, enabledTargetIds: ['router'], results: { router: 8 } },
+      'unknown',
+      null
+    );
 
     const snapshot = await getStorageSnapshot();
     expect(snapshot.outages).toHaveLength(1);
@@ -35,8 +43,16 @@ describe('storage lifecycle', () => {
     const now = Date.now();
     const eightDaysAgo = now - 8 * 24 * 60 * 60 * 1000;
 
-    await recordSample({ ts: eightDaysAgo, router: 10, gateway: 20, internet: 30 }, 'unknown');
-    await recordSample({ ts: now, router: 12, gateway: 22, internet: 32 }, 'unknown');
+    await recordSample(
+      { ts: eightDaysAgo, enabledTargetIds: ['a'], results: { a: 10 } },
+      'unknown',
+      null
+    );
+    await recordSample(
+      { ts: now, enabledTargetIds: ['a'], results: { a: 12 } },
+      'unknown',
+      null
+    );
 
     await runRollup(now);
 

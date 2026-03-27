@@ -5,16 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PingDoctor Options</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+    <style>
+      .target-row { border: 1px solid var(--pico-muted-border-color); border-radius: 8px; padding: 0.9rem; margin-bottom: 0.8rem; }
+      .target-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+      .target-head strong { font-size: 0.95rem; }
+      .target-enabled { display: flex; align-items: center; gap: 0.5rem; }
+    </style>
   </head>
   <body>
     <main class="container">
       <h2>PingDoctor Settings</h2>
-      <form id="settings-form">
-        <label>
-          Router IP
-          <input id="router-ip" name="routerIp" type="text" placeholder="192.168.1.1" required />
-        </label>
+      <p>Targets are fully user-defined. Add or remove as many as you want.</p>
 
+      <details>
+        <summary>How to find your router IP</summary>
+        <p><strong>Windows:</strong> Run <code>ipconfig</code> and use the <em>Default Gateway</em> value.</p>
+        <p><strong>macOS:</strong> Run <code>route -n get default</code> and use <em>gateway</em>.</p>
+        <p><strong>Linux:</strong> Run <code>ip route</code> and use the address after <em>default via</em>.</p>
+      </details>
+
+      <form id="settings-form">
         <label>
           Poll Interval
           <select id="poll-interval" name="pollIntervalSec">
@@ -24,18 +34,11 @@
           </select>
         </label>
 
-        <details>
-          <summary>Advanced custom targets</summary>
-          <label>
-            Gateway target URL
-            <input id="gateway-target" name="gateway" type="url" placeholder="http://8.8.8.8" />
-          </label>
-          <label>
-            Internet target URL
-            <input id="internet-target" name="internet" type="url" placeholder="https://connectivitycheck.gstatic.com/generate_204" />
-          </label>
-        </details>
+        <h4>Ping Targets</h4>
+        <div id="targets-list"></div>
+        <button id="add-target" type="button" class="secondary">Add Target</button>
 
+        <hr />
         <button type="submit">Save</button>
       </form>
 
@@ -44,6 +47,28 @@
       <button id="clear-data" class="contrast" type="button">Clear all data</button>
       <p id="status"></p>
     </main>
+
+    <template id="target-template">
+      <article class="target-row" data-target-row>
+        <div class="target-head">
+          <strong data-target-title>Target</strong>
+          <button type="button" data-action="remove" class="contrast">Delete</button>
+        </div>
+        <label class="target-enabled">
+          <input data-field="enabled" type="checkbox" />
+          Enabled
+        </label>
+        <label>
+          Label
+          <input data-field="label" type="text" placeholder="Target Label" />
+        </label>
+        <label>
+          Address or URL
+          <input data-field="address" type="text" placeholder="8.8.8.8" />
+        </label>
+        <input data-field="id" type="hidden" />
+      </article>
+    </template>
 
     <script type="module" src="./options.ts"></script>
   </body>

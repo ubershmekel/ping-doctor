@@ -1,4 +1,4 @@
-import { diagnose } from '../lib/diagnose';
+import { diagnose, firstFailedTargetId } from '../lib/diagnose';
 import { detectLocalIp, deriveRouterIp } from '../lib/network';
 import { probeAll } from '../lib/probe';
 import {
@@ -27,9 +27,14 @@ async function scheduleAlarm(): Promise<void> {
   });
 }
 
-function shouldAutoUpdateRouterIp(currentRouterIp: string, previousLocalIp: string | null): boolean {
+function stripScheme(value: string): string {
+  return value.replace(/^https?:\/\//, '');
+}
+
+function shouldAutoUpdateRouterIp(currentAddress: string, previousLocalIp: string | null): boolean {
+  const normalized = stripScheme(currentAddress);
   const derivedPrevious = deriveRouterIp(previousLocalIp);
-  return currentRouterIp === '192.168.1.1' || (!!derivedPrevious && derivedPrevious === currentRouterIp);
+  return normalized === '192.168.1.1' || (!!derivedPrevious && derivedPrevious === normalized);
 }
 
 async function runTick(): Promise<void> {
@@ -39,10 +44,13 @@ async function runTick(): Promise<void> {
   const localIp = await detectLocalIp();
   const networkChanged = !!localIp && localIp !== snapshot.state.lastLocalIp;
 
-  if (networkChanged) {
+  const routerTarget = settings.targets.find((target) => target.id === 'router');
+  if (networkChanged && routerTarget?.enabled) {
     const derived = deriveRouterIp(localIp);
-    if (derived && shouldAutoUpdateRouterIp(settings.routerIp, snapshot.state.lastLocalIp)) {
-      settings = await updateSettings({ routerIp: derived });
+    if (derived && shouldAutoUpdateRouterIp(routerTarget.address, snapshot.state.lastLocalIp)) {
+      settings = await updateSettings({
+        targets: settings.targets.map((target) => (target.id === 'router' ? { ...target, address: derived } : target))
+      });
     }
   }
 
@@ -50,16 +58,19 @@ async function runTick(): Promise<void> {
     await setLastLocalIp(localIp);
   }
 
-  const result = await probeAll(settings);
+  const enabledTargetIds = settings.targets.filter((target) => target.enabled).map((target) => target.id);
+  const results = await probeAll(settings);
+
   const sample = {
     ts: Date.now(),
-    ...result,
+    results,
+    enabledTargetIds,
     networkChanged,
     localIp
   };
 
   const diagnosis = diagnose(sample);
-  await recordSample(sample, diagnosis);
+  await recordSample(sample, diagnosis, firstFailedTargetId(sample));
   await runRollup(sample.ts);
 }
 
@@ -92,7 +103,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'check-now') {
     void runTick()
       .then(() => getStorageSnapshot())
-      .then((snapshot) => sendResponse({ ok: true, snapshot }))
+      .then((nextSnapshot) => sendResponse({ ok: true, snapshot: nextSnapshot }))
       .catch((error) => {
         console.error('[PingDoctor] check-now failed', error);
         sendResponse({ ok: false, error: String(error) });
@@ -112,7 +123,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type === 'get-snapshot') {
     void getStorageSnapshot()
-      .then((snapshot) => sendResponse({ ok: true, snapshot }))
+      .then((nextSnapshot) => sendResponse({ ok: true, snapshot: nextSnapshot }))
       .catch((error) => sendResponse({ ok: false, error: String(error) }));
     return true;
   }

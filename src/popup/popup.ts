@@ -10,8 +10,9 @@ import {
   type ChartDataset
 } from 'chart.js';
 import zoomPlugin from 'chartjs-plugin-zoom';
-import { diagnose } from '../lib/diagnose';
-import type { Outage, Sample, StorageShape } from '../types';
+import { diagnose, firstFailedTargetId } from '../lib/diagnose';
+import { probeValue } from '../lib/probe';
+import type { Outage, Sample, StorageShape, TargetConfig } from '../types';
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, Tooltip, Legend, zoomPlugin);
 
@@ -30,6 +31,8 @@ let chart: Chart | null = null;
 let latestSnapshot: StorageShape | null = null;
 let selectedDate: string | null = null;
 let chartSamples: Sample[] = [];
+
+const palette = ['#2f9e44', '#1c7ed6', '#f08c00', '#862e9c', '#c92a2a', '#0b7285'];
 
 const networkDividerPlugin: Plugin<'line'> = {
   id: 'network-divider',
@@ -63,30 +66,49 @@ const networkDividerPlugin: Plugin<'line'> = {
 
 Chart.register(networkDividerPlugin);
 
-function statusFromSample(sample: Sample | undefined): { pill: string; text: string; sentence: string } {
+function enabledTargets(snapshot: StorageShape): TargetConfig[] {
+  return snapshot.settings.targets.filter((target) => target.enabled);
+}
+
+function targetLabelById(snapshot: StorageShape): Map<string, string> {
+  return new Map(snapshot.settings.targets.map((target) => [target.id, target.label]));
+}
+
+function isHealthySample(sample: Sample | undefined): boolean {
+  if (!sample) {
+    return false;
+  }
+
+  return sample.enabledTargetIds.every((targetId) => sample.results[targetId] !== null);
+}
+
+function statusFromSample(sample: Sample | undefined, snapshot: StorageShape): { pill: string; text: string; sentence: string } {
   if (!sample) {
     return { pill: 'pill-degraded', text: 'Diagnosing', sentence: 'Diagnosing...' };
   }
 
-  if (sample.router !== null && sample.gateway !== null && sample.internet !== null) {
-    return { pill: 'pill-healthy', text: 'Healthy', sentence: 'All systems healthy' };
+  if (isHealthySample(sample)) {
+    return { pill: 'pill-healthy', text: 'Healthy', sentence: 'All enabled targets are healthy' };
   }
 
-  if (sample.router === null) {
-    return { pill: 'pill-outage', text: 'Outage', sentence: 'Symptoms detected - looks like your WiFi' };
-  }
-
-  if (sample.gateway === null) {
-    return { pill: 'pill-degraded', text: 'Degraded', sentence: 'Symptoms detected - looks like your ISP' };
-  }
-
-  return { pill: 'pill-degraded', text: 'Degraded', sentence: 'Symptoms detected - internet issue detected' };
+  const firstDown = firstFailedTargetId(sample);
+  const labelMap = targetLabelById(snapshot);
+  const label = firstDown ? labelMap.get(firstDown) ?? 'Target' : 'Target';
+  return {
+    pill: 'pill-degraded',
+    text: 'Degraded',
+    sentence: `${label} is unreachable`
+  };
 }
 
 function layerRow(label: string, target: string, value: number | null): string {
   const icon = value === null ? '??' : '??';
   const latency = value === null ? 'down' : `${value}ms`;
   return `<div class="layer-row"><span>${icon} ${label}</span><code>${target}</code><strong>${latency}</strong></div>`;
+}
+
+function formatTarget(value: string): string {
+  return value.replace(/^https?:\/\//, '');
 }
 
 function formatTimestamp(ts: number | null): string {
@@ -105,13 +127,6 @@ function formatDurationMs(ms: number): string {
   return `${minutes} min`;
 }
 
-function outageLabel(diagnosis: Outage['diagnosis']): string {
-  if (diagnosis === 'wifi') return 'WiFi';
-  if (diagnosis === 'isp') return 'ISP';
-  if (diagnosis === 'internet') return 'Internet';
-  return 'Unknown';
-}
-
 function dayString(ts: number): string {
   const d = new Date(ts);
   const y = d.getFullYear();
@@ -120,14 +135,18 @@ function dayString(ts: number): string {
   return `${y}-${m}-${day}`;
 }
 
-function describeAffected(outage: Outage): string {
-  const bad = new Set(outage.affectedLayers);
-  const mk = (layer: 'router' | 'gateway' | 'internet') => (bad.has(layer) ? '?' : '?');
-  return `Router ${mk('router')}  Gateway ${mk('gateway')}  Internet ${mk('internet')}`;
+function describeAffected(outage: Outage, snapshot: StorageShape): string {
+  const labelMap = targetLabelById(snapshot);
+  if (outage.affectedTargetIds.length === 0) {
+    return 'No affected targets';
+  }
+
+  return outage.affectedTargetIds.map((id) => labelMap.get(id) ?? id).join(', ');
 }
 
 function mergeLogItems(snapshot: StorageShape): Array<{ ts: number; html: string }> {
   const entries: Array<{ ts: number; html: string }> = [];
+  const labelMap = targetLabelById(snapshot);
 
   const outages = [...snapshot.outages];
   if (snapshot.state.currentOutage) {
@@ -141,9 +160,11 @@ function mergeLogItems(snapshot: StorageShape): Array<{ ts: number; html: string
       continue;
     }
 
+    const primaryLabel = outage.primaryTargetId ? labelMap.get(outage.primaryTargetId) ?? outage.primaryTargetId : 'Target';
+
     entries.push({
       ts: outage.start,
-      html: `<div class="outage-item"><strong>${new Date(outage.start).toLocaleString()} - ${outage.end ? new Date(outage.end).toLocaleString() : 'ongoing'}</strong> (${formatDurationMs(end - outage.start)}) ? ${outageLabel(outage.diagnosis)}<br /><span class="dim">${describeAffected(outage)}</span></div>`
+      html: `<div class="outage-item"><strong>${new Date(outage.start).toLocaleString()} - ${outage.end ? new Date(outage.end).toLocaleString() : 'ongoing'}</strong> (${formatDurationMs(end - outage.start)}) ? ${primaryLabel}<br /><span class="dim">Affected: ${describeAffected(outage, snapshot)}</span></div>`
     });
   }
 
@@ -151,6 +172,7 @@ function mergeLogItems(snapshot: StorageShape): Array<{ ts: number; html: string
     if (!sample.networkChanged) {
       continue;
     }
+
     const sameDay = selectedDate ? dayString(sample.ts) === selectedDate : true;
     if (!sameDay) {
       continue;
@@ -175,7 +197,8 @@ function calculateDayUptime(date: string, snapshot: StorageShape): number {
   if (daySamples.length === 0) {
     return 100;
   }
-  const healthy = daySamples.filter((s) => s.router !== null && s.gateway !== null && s.internet !== null).length;
+
+  const healthy = daySamples.filter((s) => isHealthySample(s)).length;
   return Number(((healthy / daySamples.length) * 100).toFixed(2));
 }
 
@@ -249,14 +272,14 @@ function renderChart(snapshot: StorageShape): void {
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   chartSamples = snapshot.samples.filter((s) => s.ts >= cutoff).sort((a, b) => a.ts - b.ts);
 
-  const mkData = (key: 'router' | 'gateway' | 'internet'): Array<{ x: number; y: number | null }> =>
-    chartSamples.map((s) => ({ x: s.ts, y: s[key] }));
-
-  const datasets: ChartDataset<'line'>[] = [
-    { label: 'Router', data: mkData('router'), borderColor: '#2f9e44', pointRadius: 0, spanGaps: false },
-    { label: 'Gateway', data: mkData('gateway'), borderColor: '#1c7ed6', pointRadius: 0, spanGaps: false },
-    { label: 'Internet', data: mkData('internet'), borderColor: '#f08c00', pointRadius: 0, spanGaps: false }
-  ];
+  const targets = enabledTargets(snapshot);
+  const datasets: ChartDataset<'line'>[] = targets.map((target, idx) => ({
+    label: target.label,
+    data: chartSamples.map((sample) => ({ x: sample.ts, y: probeValue(sample, target.id) })),
+    borderColor: palette[idx % palette.length],
+    pointRadius: 0,
+    spanGaps: false
+  }));
 
   if (chart) {
     chart.data.datasets = datasets;
@@ -290,7 +313,17 @@ function renderChart(snapshot: StorageShape): void {
             footer: (items) => {
               const idx = items[0].dataIndex;
               const sample = chartSamples[idx];
-              return sample ? `Diagnosis: ${outageLabel(diagnose(sample))}` : '';
+              if (!sample) {
+                return '';
+              }
+
+              const failingId = firstFailedTargetId(sample);
+              if (!failingId) {
+                return `Diagnosis: ${diagnose(sample)}`;
+              }
+
+              const label = targetLabelById(snapshot).get(failingId) ?? failingId;
+              return `Diagnosis: ${label} down`;
             }
           }
         },
@@ -315,7 +348,8 @@ function renderOutages(snapshot: StorageShape): void {
 
 function renderCurrent(snapshot: StorageShape): void {
   const sample = snapshot.samples[snapshot.samples.length - 1];
-  const status = statusFromSample(sample);
+  const status = statusFromSample(sample, snapshot);
+  const targets = enabledTargets(snapshot);
 
   if (statusPill) {
     statusPill.className = `status-pill ${status.pill}`;
@@ -327,17 +361,18 @@ function renderCurrent(snapshot: StorageShape): void {
   }
 
   if (currentStatusEl) {
-    currentStatusEl.innerHTML = [
-      layerRow('Router', snapshot.settings.routerIp, sample?.router ?? null),
-      layerRow('Gateway', snapshot.settings.targets.gateway.replace(/^https?:\/\//, ''), sample?.gateway ?? null),
-      layerRow('Internet', 'google.com', sample?.internet ?? null),
-      `<p class="dim">${status.sentence}</p>`
-    ].join('');
+    const rows = targets.map((target) => layerRow(target.label, formatTarget(target.address), probeValue(sample, target.id)));
+    rows.push(`<p class="dim">${status.sentence}</p>`);
+    currentStatusEl.innerHTML = rows.join('');
   }
 
-  const hasRouterSuccess = snapshot.samples.some((s) => s.router !== null);
+  const firstTarget = targets[0];
+  const hasPrimarySuccess = firstTarget
+    ? snapshot.samples.some((entry) => probeValue(entry, firstTarget.id) !== null)
+    : false;
+
   if (routerHelpEl) {
-    routerHelpEl.hidden = hasRouterSuccess || sample?.router !== null;
+    routerHelpEl.hidden = !firstTarget || hasPrimarySuccess || probeValue(sample, firstTarget.id) !== null;
   }
 }
 
