@@ -1,0 +1,30 @@
+{
+  "docker.lsp.experimental.vulnerabilityScanning": false,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "editor.formatOnSaveMode": "file",
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "never",
+    "source.fixAll.eslint": "never"
+  },
+  "prettier.prettierPath": "./node_modules/prettier",
+  "prettier.requireConfig": true,
+  "jestrunner.enableTestExplorer": true,
+  "jestrunner.projectPath": ".",
+  "jestrunner.disablePlaywright": true,
+  "jestrunner.nodeTestRunOptions": [],
+  "jestrunner.vitestCommand": "node ./node_modules/vitest/vitest.mjs",
+  "jestrunner.vitestRunOptions": [
+    "run"
+  ],
+  "jestrunner.defaultTestPatterns": [
+    "tests/**/*.test.ts",
+    "src/tests/**/*.test.ts",
+    "**/*.{test,spec}.?(c|m)[jt]s?(x)",
+    "**/__tests__/**/*.?(c|m)[jt]s?(x)"
+  ],
+  "[vue]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "vue.server.hybridMode": true
+}

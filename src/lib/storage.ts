@@ -1,17 +1,39 @@
-import { failedTargetIds, isOutageSample } from './diagnose';
-import type { DaySummary, Diagnosis, Outage, Sample, Settings, StorageShape, TargetConfig, TargetId } from '../types';
+import { failedTargetIds, isOutageSample } from "./diagnose";
+import type {
+  DaySummary,
+  Diagnosis,
+  Outage,
+  Sample,
+  Settings,
+  StorageShape,
+  TargetConfig,
+  TargetId,
+} from "../types";
 
-const STORAGE_KEY = 'pingdoctor';
+const STORAGE_KEY = "pingdoctor";
+const DB_NAME = "pingdoctor-events";
+const DB_VERSION = 1;
+const SAMPLES_STORE = "samples";
+const OUTAGES_STORE = "outages";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RETENTION_MS = 7 * DAY_MS;
 
 export const DEFAULT_SETTINGS: Settings = {
   pollIntervalSec: 30,
   targets: [
-    { id: 'router', label: 'Wifi Router', address: '192.168.1.1', enabled: true },
-    { id: 'modem', label: 'Internet Modem', address: '8.8.8.8', enabled: true },
-    { id: 'site', label: 'Internet Site', address: 'connectivitycheck.gstatic.com/generate_204', enabled: true }
-  ]
+    {
+      id: "router",
+      label: "Wifi Router",
+      address: "192.168.1.1",
+      enabled: true,
+    },
+    {
+      id: "site",
+      label: "Internet Site",
+      address: "connectivitycheck.gstatic.com/generate_204",
+      enabled: true,
+    },
+  ],
 };
 
 const DEFAULT_STORAGE: StorageShape = {
@@ -22,15 +44,23 @@ const DEFAULT_STORAGE: StorageShape = {
   state: {
     lastLocalIp: null,
     currentOutage: null,
-    lastCheckedAt: null
-  }
+    lastCheckedAt: null,
+  },
 };
+
+type MetaShape = Omit<StorageShape, "samples" | "outages"> & {
+  samples?: Sample[];
+  outages?: Outage[];
+};
+
+let dbPromise: Promise<IDBDatabase> | null = null;
+let idbUnavailable = false;
 
 function localDate(ts: number): string {
   const d = new Date(ts);
   const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
@@ -44,11 +74,11 @@ function isTargetConfig(value: unknown): value is TargetConfig {
   const target = value as TargetConfig;
   return (
     !!target &&
-    typeof target.id === 'string' &&
+    typeof target.id === "string" &&
     target.id.length > 0 &&
-    typeof target.label === 'string' &&
-    typeof target.address === 'string' &&
-    typeof target.enabled === 'boolean'
+    typeof target.label === "string" &&
+    typeof target.address === "string" &&
+    typeof target.enabled === "boolean"
   );
 }
 
@@ -68,128 +98,419 @@ function sanitizeTargets(targets: TargetConfig[]): TargetConfig[] {
     seen.add(target.id);
     next.push({
       id: target.id,
-      label: target.label.trim() || 'Target',
+      label: target.label.trim() || "Target",
       address: target.address.trim(),
-      enabled: target.enabled
+      enabled: target.enabled,
     });
   }
 
   return next;
 }
 
-function normalize(data?: Partial<StorageShape>): StorageShape {
+function normalizeMeta(data?: Partial<MetaShape>): MetaShape {
   const targets = Array.isArray(data?.settings?.targets)
     ? sanitizeTargets(data?.settings?.targets ?? [])
     : [];
 
   if (targets.length === 0) {
-    return structuredClone(DEFAULT_STORAGE);
+    return {
+      settings: structuredClone(DEFAULT_STORAGE.settings),
+      daySummaries: [],
+      state: structuredClone(DEFAULT_STORAGE.state),
+      samples: [],
+      outages: [],
+    };
   }
 
   const pollInterval = data?.settings?.pollIntervalSec;
-  const pollIntervalSec = pollInterval === 15 || pollInterval === 30 || pollInterval === 60 ? pollInterval : 30;
+  const pollIntervalSec =
+    pollInterval === 15 || pollInterval === 30 || pollInterval === 60
+      ? pollInterval
+      : 30;
 
   return {
     settings: {
       pollIntervalSec,
-      targets
+      targets,
     },
-    samples: Array.isArray(data?.samples) ? data.samples : [],
-    outages: Array.isArray(data?.outages) ? data.outages : [],
     daySummaries: Array.isArray(data?.daySummaries) ? data.daySummaries : [],
     state: {
       ...DEFAULT_STORAGE.state,
-      ...(data?.state ?? {})
-    }
+      ...(data?.state ?? {}),
+    },
+    samples: Array.isArray(data?.samples) ? data.samples : [],
+    outages: Array.isArray(data?.outages) ? data.outages : [],
   };
 }
 
-async function readStorage(): Promise<StorageShape> {
+async function readMeta(): Promise<MetaShape> {
   const raw = await chrome.storage.local.get(STORAGE_KEY);
-  return normalize(raw[STORAGE_KEY]);
+  return normalizeMeta(raw[STORAGE_KEY]);
 }
 
-async function writeStorage(data: StorageShape): Promise<void> {
+async function writeMeta(data: MetaShape): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_KEY]: data });
 }
 
+function canUseIndexedDb(): boolean {
+  return (
+    !idbUnavailable &&
+    typeof indexedDB !== "undefined" &&
+    typeof indexedDB.open === "function"
+  );
+}
+
+function getDatabase(): Promise<IDBDatabase> {
+  if (dbPromise) {
+    return dbPromise;
+  }
+
+  dbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+
+      if (!db.objectStoreNames.contains(SAMPLES_STORE)) {
+        const sampleStore = db.createObjectStore(SAMPLES_STORE, {
+          keyPath: "id",
+          autoIncrement: true,
+        });
+        sampleStore.createIndex("ts", "ts", { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains(OUTAGES_STORE)) {
+        const outageStore = db.createObjectStore(OUTAGES_STORE, {
+          keyPath: "id",
+          autoIncrement: true,
+        });
+        outageStore.createIndex("start", "start", { unique: false });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () =>
+      reject(request.error ?? new Error("Failed to open IndexedDB"));
+  });
+
+  dbPromise.catch((error) => {
+    idbUnavailable = true;
+    dbPromise = null;
+    throw error;
+  });
+
+  return dbPromise;
+}
+
+function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () =>
+      reject(request.error ?? new Error("IndexedDB request failed"));
+  });
+}
+
+function transactionDone(transaction: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () =>
+      reject(transaction.error ?? new Error("IndexedDB transaction failed"));
+    transaction.onabort = () =>
+      reject(transaction.error ?? new Error("IndexedDB transaction aborted"));
+  });
+}
+
+async function appendEvent<T extends Sample | Outage>(
+  storeName: string,
+  value: T,
+): Promise<void> {
+  const db = await getDatabase();
+  const tx = db.transaction(storeName, "readwrite");
+  tx.objectStore(storeName).add(value);
+  await transactionDone(tx);
+}
+
+async function queryEvents<T>(
+  storeName: string,
+  indexName: string,
+  minTs: number | null,
+  maxTs: number | null,
+): Promise<T[]> {
+  const db = await getDatabase();
+  const tx = db.transaction(storeName, "readonly");
+  const index = tx.objectStore(storeName).index(indexName);
+
+  const range =
+    minTs === null && maxTs === null
+      ? undefined
+      : minTs === null
+        ? IDBKeyRange.upperBound(maxTs as number)
+        : maxTs === null
+          ? IDBKeyRange.lowerBound(minTs)
+          : IDBKeyRange.bound(minTs, maxTs);
+
+  const request = index.openCursor(range);
+  const rows: T[] = [];
+
+  await new Promise<void>((resolve, reject) => {
+    request.onerror = () =>
+      reject(request.error ?? new Error("IndexedDB cursor failed"));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) {
+        resolve();
+        return;
+      }
+
+      const value = cursor.value as T;
+      rows.push(value);
+      cursor.continue();
+    };
+  });
+
+  await transactionDone(tx);
+  return rows;
+}
+
+async function clearEventStores(): Promise<void> {
+  const db = await getDatabase();
+  const tx = db.transaction([SAMPLES_STORE, OUTAGES_STORE], "readwrite");
+  tx.objectStore(SAMPLES_STORE).clear();
+  tx.objectStore(OUTAGES_STORE).clear();
+  await transactionDone(tx);
+}
+
+async function appendSample(sample: Sample, meta: MetaShape): Promise<void> {
+  if (!canUseIndexedDb()) {
+    meta.samples = [...(meta.samples ?? []), sample];
+    return;
+  }
+
+  try {
+    await appendEvent(SAMPLES_STORE, sample);
+  } catch {
+    idbUnavailable = true;
+    meta.samples = [...(meta.samples ?? []), sample];
+  }
+}
+
+async function appendOutage(outage: Outage, meta: MetaShape): Promise<void> {
+  if (!canUseIndexedDb()) {
+    meta.outages = [...(meta.outages ?? []), outage];
+    return;
+  }
+
+  try {
+    await appendEvent(OUTAGES_STORE, outage);
+  } catch {
+    idbUnavailable = true;
+    meta.outages = [...(meta.outages ?? []), outage];
+  }
+}
+
+async function listSamples(
+  minTs: number | null,
+  maxTs: number | null,
+  meta: MetaShape,
+): Promise<Sample[]> {
+  if (!canUseIndexedDb()) {
+    const all = meta.samples ?? [];
+    return all.filter(
+      (s) =>
+        (minTs === null || s.ts >= minTs) && (maxTs === null || s.ts <= maxTs),
+    );
+  }
+
+  try {
+    return await queryEvents<Sample>(SAMPLES_STORE, "ts", minTs, maxTs);
+  } catch {
+    idbUnavailable = true;
+    const all = meta.samples ?? [];
+    return all.filter(
+      (s) =>
+        (minTs === null || s.ts >= minTs) && (maxTs === null || s.ts <= maxTs),
+    );
+  }
+}
+
+async function listOutages(
+  minStart: number | null,
+  maxStart: number | null,
+  meta: MetaShape,
+): Promise<Outage[]> {
+  if (!canUseIndexedDb()) {
+    const all = meta.outages ?? [];
+    return all.filter(
+      (o) =>
+        (minStart === null || o.start >= minStart) &&
+        (maxStart === null || o.start <= maxStart),
+    );
+  }
+
+  try {
+    return await queryEvents<Outage>(
+      OUTAGES_STORE,
+      "start",
+      minStart,
+      maxStart,
+    );
+  } catch {
+    idbUnavailable = true;
+    const all = meta.outages ?? [];
+    return all.filter(
+      (o) =>
+        (minStart === null || o.start >= minStart) &&
+        (maxStart === null || o.start <= maxStart),
+    );
+  }
+}
+
+async function clearEvents(meta: MetaShape): Promise<void> {
+  if (!canUseIndexedDb()) {
+    meta.samples = [];
+    meta.outages = [];
+    return;
+  }
+
+  try {
+    await clearEventStores();
+  } catch {
+    idbUnavailable = true;
+    meta.samples = [];
+    meta.outages = [];
+  }
+}
+
+function toSnapshot(
+  meta: MetaShape,
+  samples: Sample[],
+  outages: Outage[],
+): StorageShape {
+  return {
+    settings: meta.settings,
+    daySummaries: meta.daySummaries,
+    state: meta.state,
+    samples,
+    outages,
+  };
+}
+
 export async function getStorageSnapshot(): Promise<StorageShape> {
-  return readStorage();
+  const meta = await readMeta();
+  const cutoff = Date.now() - RETENTION_MS;
+  const [samples, outages] = await Promise.all([
+    listSamples(cutoff, null, meta),
+    listOutages(cutoff, null, meta),
+  ]);
+  return toSnapshot(meta, samples, outages);
 }
 
 export async function getSettings(): Promise<Settings> {
-  const data = await readStorage();
-  return data.settings;
+  const meta = await readMeta();
+  return meta.settings;
 }
 
-export async function updateSettings(next: Partial<Settings>): Promise<Settings> {
-  const data = await readStorage();
-  data.settings = {
-    pollIntervalSec: next.pollIntervalSec ?? data.settings.pollIntervalSec,
-    targets: next.targets ? sanitizeTargets(next.targets) : data.settings.targets
+export async function updateSettings(
+  next: Partial<Settings>,
+): Promise<Settings> {
+  const meta = await readMeta();
+  meta.settings = {
+    pollIntervalSec: next.pollIntervalSec ?? meta.settings.pollIntervalSec,
+    targets: next.targets
+      ? sanitizeTargets(next.targets)
+      : meta.settings.targets,
   };
 
-  if (data.settings.targets.length === 0) {
-    data.settings.targets = structuredClone(DEFAULT_SETTINGS.targets);
+  if (meta.settings.targets.length === 0) {
+    meta.settings.targets = structuredClone(DEFAULT_SETTINGS.targets);
   }
 
-  await writeStorage(data);
-  return data.settings;
+  await writeMeta(meta);
+  return meta.settings;
 }
 
 export async function setLastLocalIp(ip: string | null): Promise<void> {
-  const data = await readStorage();
-  data.state.lastLocalIp = ip;
-  await writeStorage(data);
+  const meta = await readMeta();
+  meta.state.lastLocalIp = ip;
+  await writeMeta(meta);
 }
 
 export async function clearAllData(): Promise<void> {
-  await writeStorage({ ...DEFAULT_STORAGE, settings: (await readStorage()).settings });
+  const meta = await readMeta();
+  const next: MetaShape = {
+    settings: meta.settings,
+    daySummaries: [],
+    state: structuredClone(DEFAULT_STORAGE.state),
+    samples: [],
+    outages: [],
+  };
+
+  await clearEvents(next);
+  await writeMeta(next);
 }
 
 function mergeOutageTargets(outage: Outage, sample: Sample): Outage {
-  const next = new Set([...outage.affectedTargetIds, ...failedTargetIds(sample)]);
+  const next = new Set([
+    ...outage.affectedTargetIds,
+    ...failedTargetIds(sample),
+  ]);
   return {
     ...outage,
-    affectedTargetIds: Array.from(next)
+    affectedTargetIds: Array.from(next),
   };
 }
 
 function isHealthySample(sample: Sample): boolean {
-  return sample.enabledTargetIds.every((targetId) => sample.results[targetId] !== null);
+  return sample.enabledTargetIds.every(
+    (targetId) => sample.results[targetId] !== null,
+  );
 }
 
-export async function recordSample(sample: Sample, diagnosis: Diagnosis, primaryTargetId: TargetId | null): Promise<void> {
-  const data = await readStorage();
-  data.samples.push(sample);
-  data.state.lastCheckedAt = sample.ts;
+export async function recordSample(
+  sample: Sample,
+  diagnosis: Diagnosis,
+  primaryTargetId: TargetId | null,
+): Promise<void> {
+  const meta = await readMeta();
+  await appendSample(sample, meta);
+  meta.state.lastCheckedAt = sample.ts;
 
   const isOutage = isOutageSample(sample);
 
-  if (data.state.currentOutage) {
+  if (meta.state.currentOutage) {
     if (isOutage) {
-      data.state.currentOutage = mergeOutageTargets(data.state.currentOutage, sample);
+      meta.state.currentOutage = mergeOutageTargets(
+        meta.state.currentOutage,
+        sample,
+      );
     } else {
-      data.state.currentOutage.end = sample.ts;
-      data.outages.push(data.state.currentOutage);
-      data.state.currentOutage = null;
+      meta.state.currentOutage.end = sample.ts;
+      await appendOutage(meta.state.currentOutage, meta);
+      meta.state.currentOutage = null;
     }
   } else if (isOutage) {
-    data.state.currentOutage = {
+    meta.state.currentOutage = {
       start: sample.ts,
       end: null,
       affectedTargetIds: failedTargetIds(sample),
       diagnosis,
-      primaryTargetId
+      primaryTargetId,
     };
   }
 
-  await writeStorage(data);
+  await writeMeta(meta);
 }
 
-function summarizeDay(date: string, samples: Sample[], outages: Outage[]): DaySummary {
+function summarizeDay(
+  date: string,
+  samples: Sample[],
+  outages: Outage[],
+): DaySummary {
   const healthyCount = samples.filter((s) => isHealthySample(s)).length;
-  const uptimePct = samples.length === 0 ? 100 : Number(((healthyCount / samples.length) * 100).toFixed(2));
+  const uptimePct =
+    samples.length === 0
+      ? 100
+      : Number(((healthyCount / samples.length) * 100).toFixed(2));
 
   const targetIds = new Set<string>();
   for (const sample of samples) {
@@ -202,21 +523,27 @@ function summarizeDay(date: string, samples: Sample[], outages: Outage[]): DaySu
   for (const targetId of targetIds) {
     const values = samples
       .map((s) => s.results[targetId])
-      .filter((value): value is number => typeof value === 'number');
+      .filter((value): value is number => typeof value === "number");
 
     avgLatencyByTarget[targetId] =
-      values.length > 0 ? Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)) : 0;
+      values.length > 0
+        ? Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(1))
+        : 0;
   }
 
   return {
     date,
     uptimePct,
     avgLatencyByTarget,
-    outages
+    outages,
   };
 }
 
-function clipOutageToDay(outage: Outage, dayStart: number, dayEnd: number): Outage | null {
+function clipOutageToDay(
+  outage: Outage,
+  dayStart: number,
+  dayEnd: number,
+): Outage | null {
   const outageEnd = outage.end ?? dayEnd;
   if (outage.start > dayEnd || outageEnd < dayStart) {
     return null;
@@ -225,24 +552,22 @@ function clipOutageToDay(outage: Outage, dayStart: number, dayEnd: number): Outa
   return {
     ...outage,
     start: Math.max(outage.start, dayStart),
-    end: Math.min(outageEnd, dayEnd)
+    end: Math.min(outageEnd, dayEnd),
   };
 }
 
 export async function runRollup(now = Date.now()): Promise<void> {
-  const data = await readStorage();
+  const meta = await readMeta();
   const cutoff = now - RETENTION_MS;
 
-  const oldSamples = data.samples.filter((s) => s.ts < cutoff);
+  const oldSamples = await listSamples(null, cutoff - 1, meta);
   if (oldSamples.length === 0) {
     return;
   }
 
-  const recentSamples = data.samples.filter((s) => s.ts >= cutoff);
-  const oldOutages = data.outages.filter((o) => o.start < cutoff);
-  const recentOutages = data.outages.filter((o) => o.start >= cutoff);
-
+  const oldOutages = await listOutages(null, cutoff - 1, meta);
   const byDate = new Map<string, Sample[]>();
+
   for (const sample of oldSamples) {
     const date = localDate(sample.ts);
     const list = byDate.get(date) ?? [];
@@ -250,7 +575,9 @@ export async function runRollup(now = Date.now()): Promise<void> {
     byDate.set(date, list);
   }
 
-  const summaryMap = new Map<string, DaySummary>(data.daySummaries.map((s) => [s.date, s]));
+  const summaryMap = new Map<string, DaySummary>(
+    meta.daySummaries.map((s) => [s.date, s]),
+  );
 
   for (const [date, samples] of byDate) {
     const dayStart = startOfLocalDay(samples[0].ts);
@@ -262,13 +589,17 @@ export async function runRollup(now = Date.now()): Promise<void> {
     summaryMap.set(date, summarizeDay(date, samples, dayOutages));
   }
 
-  data.samples = recentSamples;
-  data.outages = recentOutages;
-  data.daySummaries = Array.from(summaryMap.values()).sort((a, b) => a.date.localeCompare(b.date));
-
-  await writeStorage(data);
+  meta.daySummaries = Array.from(summaryMap.values()).sort((a, b) =>
+    a.date.localeCompare(b.date),
+  );
+  await writeMeta(meta);
 }
 
 export async function exportData(): Promise<StorageShape> {
-  return readStorage();
+  const meta = await readMeta();
+  const [samples, outages] = await Promise.all([
+    listSamples(null, null, meta),
+    listOutages(null, null, meta),
+  ]);
+  return toSnapshot(meta, samples, outages);
 }

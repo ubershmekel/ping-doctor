@@ -21,21 +21,22 @@ describe('storage lifecycle', () => {
   });
 
   it('opens and closes outages based on subsequent healthy sample', async () => {
+    const now = Date.now();
     await recordSample(
-      { ts: 1, enabledTargetIds: ['router'], results: { router: null } },
+      { ts: now, enabledTargetIds: ['router'], results: { router: null } },
       'target',
       'router'
     );
     await recordSample(
-      { ts: 2, enabledTargetIds: ['router'], results: { router: 8 } },
+      { ts: now + 1, enabledTargetIds: ['router'], results: { router: 8 } },
       'unknown',
       null
     );
 
     const snapshot = await getStorageSnapshot();
     expect(snapshot.outages).toHaveLength(1);
-    expect(snapshot.outages[0].start).toBe(1);
-    expect(snapshot.outages[0].end).toBe(2);
+    expect(snapshot.outages[0].start).toBe(now);
+    expect(snapshot.outages[0].end).toBe(now + 1);
     expect(snapshot.state.currentOutage).toBeNull();
   });
 
@@ -62,3 +63,4 @@ describe('storage lifecycle', () => {
     expect(snapshot.samples[0].ts).toBe(now);
   });
 });
+
