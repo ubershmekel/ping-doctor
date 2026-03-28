@@ -1,10 +1,10 @@
 import {
   Chart,
   Legend,
-  LineController,
-  LineElement,
   LinearScale,
+  LineElement,
   PointElement,
+  ScatterController,
   Tooltip,
   type ChartDataset,
   type Plugin
@@ -15,7 +15,7 @@ import { probeValue } from '../lib/probe';
 import { getSettings, updateSettings } from '../lib/storage';
 import type { Outage, Sample, StorageShape, TargetConfig } from '../types';
 
-Chart.register(LineController, LineElement, PointElement, LinearScale, Tooltip, Legend, zoomPlugin);
+Chart.register(ScatterController, LineElement, PointElement, LinearScale, Tooltip, Legend, zoomPlugin);
 
 const form = document.querySelector<HTMLFormElement>('#settings-form');
 const intervalInput = document.querySelector<HTMLSelectElement>('#poll-interval');
@@ -46,8 +46,90 @@ let chart: Chart | null = null;
 
 const palette = ['#2f9e44', '#1c7ed6', '#f08c00', '#862e9c', '#c92a2a', '#0b7285'];
 
+let targetAverages: Map<string, number> = new Map();
+let failureTooltipEl: HTMLDivElement | null = null;
+
 function isFailedSample(sample: Sample): boolean {
   return sample.enabledTargetIds.some((targetId) => sample.results[targetId] === null);
+}
+
+function computeTargetAverages(snapshot: StorageShape): Map<string, number> {
+  const sums = new Map<string, { total: number; count: number }>();
+  for (const sample of snapshot.samples) {
+    for (const targetId of sample.enabledTargetIds) {
+      const value = sample.results[targetId];
+      if (value !== null) {
+        const entry = sums.get(targetId) ?? { total: 0, count: 0 };
+        entry.total += value;
+        entry.count += 1;
+        sums.set(targetId, entry);
+      }
+    }
+  }
+  const averages = new Map<string, number>();
+  for (const [id, { total, count }] of sums) {
+    averages.set(id, Math.round(total / count));
+  }
+  return averages;
+}
+
+function formatLatency(value: number | null, targetId: string): string {
+  if (value === null) return '<span class="down-state">down</span>';
+  const avg = targetAverages.get(targetId);
+  if (avg !== undefined && avg > 0 && value >= avg * 2) {
+    return `<span class="latency-warn">${value}ms</span>`;
+  }
+  return `${value}ms`;
+}
+
+function handleChartEvent(c: Chart, args: { event: { type: string; x: number | null; y: number | null } }): void {
+  const tip = failureTooltipEl;
+  if (!tip) return;
+  const { event } = args;
+
+  if (event.type === 'mouseout') {
+    tip.style.display = 'none';
+    return;
+  }
+
+  if (event.type !== 'mousemove' || event.x == null || event.y == null) return;
+
+  const { scales, chartArea } = c;
+  const xScale = scales.x;
+  if (!xScale) return;
+
+  for (const span of chartFailureSpans) {
+    const x = xScale.getPixelForValue(span.start);
+    if (x < chartArea.left || x > chartArea.right) continue;
+    const y = chartArea.top + 12;
+
+    if (Math.abs(event.x - x) <= 10 && Math.abs(event.y - y) <= 10) {
+      const sample = chartSamples.find((s) => s.ts === span.start);
+      if (!sample || !latestSnapshot) {
+        tip.style.display = 'none';
+        return;
+      }
+
+      const labelMap = targetLabelById(latestSnapshot);
+      const downTargets = sample.enabledTargetIds
+        .filter((id) => sample.results[id] === null)
+        .map((id) => labelMap.get(id) ?? id);
+
+      const duration = span.end - span.start;
+
+      tip.innerHTML =
+        `<strong>Failure</strong><br>` +
+        `${new Date(span.start).toLocaleTimeString()} \u2013 ${new Date(span.end).toLocaleTimeString()}<br>` +
+        `Duration: ${formatDurationMs(duration)}<br>` +
+        `Down: ${downTargets.join(', ')}`;
+      tip.style.display = 'block';
+      tip.style.left = `${event.x + 12}px`;
+      tip.style.top = `${event.y - 10}px`;
+      return;
+    }
+  }
+
+  tip.style.display = 'none';
 }
 
 const chartEventPlugin: Plugin<'line'> = {
@@ -120,7 +202,8 @@ const chartEventPlugin: Plugin<'line'> = {
     }
 
     ctx.restore();
-  }
+  },
+  afterEvent: handleChartEvent
 };
 
 Chart.register(chartEventPlugin);
@@ -249,23 +332,15 @@ function statusFromSample(sample: Sample | undefined, snapshot: StorageShape): {
   };
 }
 
-function layerRow(label: string, target: string, value: number | null): string {
-  const state = value === null ? '<span class="down-state">down</span>' : `${value}ms`;
-  return `<div class="layer-row"><span>${label}</span><code>${target}</code><strong>${state}</strong></div>`;
+function layerRow(label: string, target: string, value: number | null, targetId: string): string {
+  const state = formatLatency(value, targetId);
+  const avg = targetAverages.get(targetId);
+  const avgText = avg !== undefined ? ` <span class="avg-label">(avg ${avg}ms)</span>` : '';
+  return `<div class="layer-row"><span>${label}</span><code>${target}</code><strong>${state}${avgText}</strong></div>`;
 }
 
 function formatTarget(value: string): string {
   return value.replace(/^https?:\/\//, '');
-}
-
-function sampleResultSummary(sample: Sample, snapshot: StorageShape): string {
-  const values = enabledTargets(snapshot).map((target) => {
-    const value = probeValue(sample, target.id);
-    const state = value === null ? '<span class="down-state">down</span>' : `${value}ms`;
-    return `${target.label}: ${state}`;
-  });
-
-  return values.join(' | ');
 }
 
 function renderRecentResults(snapshot: StorageShape): void {
@@ -279,12 +354,23 @@ function renderRecentResults(snapshot: StorageShape): void {
     return;
   }
 
-  recentResultsEl.innerHTML = recent
-    .map(
-      (sample) =>
-        `<div class="result-row"><span>${new Date(sample.ts).toLocaleTimeString()}</span><span class="result-values">${sampleResultSummary(sample, snapshot)}</span></div>`
-    )
+  const targets = enabledTargets(snapshot);
+  const headerCells = targets
+    .map((t) => {
+      const avg = targetAverages.get(t.id);
+      const avgText = avg !== undefined ? `<br><span class="avg-label">avg ${avg}ms</span>` : '';
+      return `<th>${t.label}${avgText}</th>`;
+    })
     .join('');
+
+  const rows = recent
+    .map((sample) => {
+      const cells = targets.map((t) => `<td>${formatLatency(probeValue(sample, t.id), t.id)}</td>`).join('');
+      return `<tr><td>${new Date(sample.ts).toLocaleTimeString()}</td>${cells}</tr>`;
+    })
+    .join('');
+
+  recentResultsEl.innerHTML = `<table class="results-table"><thead><tr><th>Time</th>${headerCells}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function formatTimestamp(ts: number | null): string {
@@ -519,12 +605,18 @@ function renderChart(snapshot: StorageShape): void {
   }
 
   const targets = enabledTargets(snapshot);
-  const datasets: ChartDataset<'line'>[] = targets.map((target, idx) => ({
+  const datasets: ChartDataset<'scatter'>[] = targets.map((target, idx) => ({
     label: target.label,
-    data: chartSamples.map((sample) => ({ x: sample.ts, y: probeValue(sample, target.id) })),
+    data: chartSamples
+      .map((sample) => {
+        const y = probeValue(sample, target.id);
+        return y !== null ? { x: sample.ts, y } : null;
+      })
+      .filter((p): p is { x: number; y: number } => p !== null),
     borderColor: palette[idx % palette.length],
-    pointRadius: 0,
-    spanGaps: false
+    backgroundColor: palette[idx % palette.length],
+    pointRadius: 2,
+    showLine: false
   }));
 
   if (chart) {
@@ -534,7 +626,7 @@ function renderChart(snapshot: StorageShape): void {
   }
 
   chart = new Chart(chartCanvas, {
-    type: 'line',
+    type: 'scatter',
     data: { datasets },
     options: {
       responsive: true,
@@ -566,6 +658,13 @@ function renderChart(snapshot: StorageShape): void {
       }
     }
   });
+
+  if (!failureTooltipEl && chartCanvas.parentElement) {
+    chartCanvas.parentElement.style.position = 'relative';
+    failureTooltipEl = document.createElement('div');
+    failureTooltipEl.className = 'failure-tooltip';
+    chartCanvas.parentElement.appendChild(failureTooltipEl);
+  }
 }
 
 function renderOutages(snapshot: StorageShape): void {
@@ -593,13 +692,14 @@ function renderCurrent(snapshot: StorageShape): void {
   }
 
   if (currentStatusEl) {
-    const rows = targets.map((target) => layerRow(target.label, formatTarget(target.address), probeValue(sample, target.id)));
+    const rows = targets.map((target) => layerRow(target.label, formatTarget(target.address), probeValue(sample, target.id), target.id));
     rows.push(`<p class="dim">${status.sentence}</p>`);
     currentStatusEl.innerHTML = rows.join('');
   }
 }
 
 function renderAllStats(snapshot: StorageShape): void {
+  targetAverages = computeTargetAverages(snapshot);
   renderCurrent(snapshot);
   renderRecentResults(snapshot);
   renderChart(snapshot);

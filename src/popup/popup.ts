@@ -22,6 +22,37 @@ function enabledTargets(snapshot: StorageShape): TargetConfig[] {
   return snapshot.settings.targets.filter((target) => target.enabled);
 }
 
+let targetAverages: Map<string, number> = new Map();
+
+function computeTargetAverages(snapshot: StorageShape): Map<string, number> {
+  const sums = new Map<string, { total: number; count: number }>();
+  for (const sample of snapshot.samples) {
+    for (const targetId of sample.enabledTargetIds) {
+      const value = sample.results[targetId];
+      if (value !== null) {
+        const entry = sums.get(targetId) ?? { total: 0, count: 0 };
+        entry.total += value;
+        entry.count += 1;
+        sums.set(targetId, entry);
+      }
+    }
+  }
+  const averages = new Map<string, number>();
+  for (const [id, { total, count }] of sums) {
+    averages.set(id, Math.round(total / count));
+  }
+  return averages;
+}
+
+function formatLatency(value: number | null, targetId: string): string {
+  if (value === null) return '<span class="down-state">down</span>';
+  const avg = targetAverages.get(targetId);
+  if (avg !== undefined && avg > 0 && value >= avg * 2) {
+    return `<span class="latency-warn">${value}ms</span>`;
+  }
+  return `${value}ms`;
+}
+
 function renderAddresses(snapshot: StorageShape): void {
   if (!addressesEl) {
     return;
@@ -41,8 +72,7 @@ function renderAddresses(snapshot: StorageShape): void {
 function sampleResultSummary(sample: Sample, snapshot: StorageShape): string {
   const values = enabledTargets(snapshot).map((target) => {
     const value = probeValue(sample, target.id);
-    const state = value === null ? '<span class="down-state">down</span>' : `${value}ms`;
-    return `${target.label}: ${state}`;
+    return `${target.label}: ${formatLatency(value, target.id)}`;
   });
 
   return values.join(' | ');
@@ -68,6 +98,7 @@ function renderRecentResults(snapshot: StorageShape): void {
 }
 
 function render(snapshot: StorageShape): void {
+  targetAverages = computeTargetAverages(snapshot);
   if (lastCheckEl) {
     lastCheckEl.textContent = `Last checkup: ${formatTimestamp(snapshot.state.lastCheckedAt)}`;
   }
