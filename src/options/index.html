@@ -10,6 +10,16 @@
       .target-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
       .target-head strong { font-size: 0.95rem; }
       .target-enabled { display: flex; align-items: center; gap: 0.5rem; }
+      .status-pill { border-radius: 999px; padding: 0.2rem 0.6rem; font-size: 0.85rem; font-weight: 600; }
+      .pill-healthy { background: #1f9d55; color: #fff; }
+      .pill-degraded { background: #d69e2e; color: #fff; }
+      .stats-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+      .layer-row { display: grid; grid-template-columns: 1fr auto auto; gap: 0.5rem; align-items: center; font-size: 0.9rem; }
+      .dim { opacity: 0.75; font-size: 0.85rem; }
+      .outage-item { border-left: 3px solid var(--pico-muted-border-color); padding-left: 0.6rem; margin-bottom: 0.7rem; }
+      .net-change { border-top: 1px dashed var(--pico-muted-border-color); padding-top: 0.45rem; margin: 0.5rem 0; font-size: 0.85rem; }
+      .clickable-day { cursor: pointer; }
+      .day-label { font-size: 11px; fill: currentColor; opacity: 0.8; }
     </style>
   </head>
   <body>
@@ -46,6 +56,29 @@
       <button id="export-data" class="secondary" type="button">Export data as JSON</button>
       <button id="clear-data" class="contrast" type="button">Clear all data</button>
       <p id="status"></p>
+
+      <hr />
+      <section>
+        <div class="stats-header">
+          <h3>Stats and History</h3>
+          <span id="status-pill" class="status-pill pill-healthy">Healthy</span>
+        </div>
+        <p class="dim" id="last-check">Last checkup: never</p>
+
+        <h4>Current Status</h4>
+        <div id="current-status"></div>
+        <button id="check-now" type="button">Check Now</button>
+
+        <h4>Last 24h Chart</h4>
+        <canvas id="latency-chart" height="220"></canvas>
+
+        <h4 id="outage-title">Outage Log</h4>
+        <div id="outage-log"></div>
+
+        <h4>Weekly Health Heatmap</h4>
+        <svg id="heatmap" width="760" height="100" viewBox="0 0 760 100"></svg>
+        <p class="dim">Click a day to filter outage log.</p>
+      </section>
     </main>
 
     <template id="target-template">

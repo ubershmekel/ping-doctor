@@ -7,52 +7,31 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
     <style>
       :root { color-scheme: light dark; }
-      body { width: 600px; max-height: 700px; overflow: auto; margin: 0; padding: 0.75rem; }
-      header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
-      .status-pill { border-radius: 999px; padding: 0.2rem 0.6rem; font-size: 0.85rem; font-weight: 600; }
-      .pill-healthy { background: #1f9d55; color: #fff; }
-      .pill-degraded { background: #d69e2e; color: #fff; }
-      .pill-outage { background: #c53030; color: #fff; }
-      .layer-row { display: grid; grid-template-columns: 1fr auto auto; gap: 0.5rem; align-items: center; font-size: 0.9rem; }
+      body { width: 420px; margin: 0; padding: 0.75rem; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+      h4 { margin-bottom: 0.45rem; }
+      ul { margin: 0; padding-left: 1.1rem; }
+      li { margin-bottom: 0.35rem; }
       .dim { opacity: 0.75; font-size: 0.85rem; }
-      .outage-item { border-left: 3px solid var(--pico-muted-border-color); padding-left: 0.6rem; margin-bottom: 0.7rem; }
-      .net-change { border-top: 1px dashed var(--pico-muted-border-color); padding-top: 0.45rem; margin: 0.5rem 0; font-size: 0.85rem; }
-      .clickable-day { cursor: pointer; }
-      .day-label { font-size: 10px; fill: currentColor; opacity: 0.8; }
-      #router-help { margin-top: 0.5rem; }
+      .result-row { display: grid; grid-template-columns: 1fr auto; gap: 0.4rem; align-items: baseline; }
+      .result-values { font-size: 0.85rem; text-align: right; }
     </style>
   </head>
   <body>
     <header>
       <strong>PingDoctor</strong>
-      <span id="status-pill" class="status-pill pill-healthy">Healthy</span>
+      <button id="open-options" type="button" class="secondary">Open Options</button>
     </header>
     <p class="dim" id="last-check">Last checkup: never</p>
 
     <section>
-      <h4>Current Status</h4>
-      <div id="current-status"></div>
-      <button id="check-now" type="button">Check Now</button>
-      <article id="router-help" hidden>
-        Primary target is failing from first run. Check its address in settings.
-        <button id="open-options" type="button" class="secondary">Open Options</button>
-      </article>
+      <h4>Addresses</h4>
+      <ul id="addresses"></ul>
     </section>
 
     <section>
-      <h4>Last 24h Chart</h4>
-      <canvas id="latency-chart" height="220"></canvas>
-    </section>
-
-    <section>
-      <h4 id="outage-title">Outage Log</h4>
-      <div id="outage-log"></div>
-    </section>
-
-    <section>
-      <h4>Weekly Health Heatmap</h4>
-      <svg id="heatmap" width="560" height="100" viewBox="0 0 560 100"></svg>
-      <p class="dim">Click a day to filter outage log.</p>
+      <h4>Recent Results</h4>
+      <div id="recent-results"></div>
     </section>
 
     <script type="module" src="./popup.ts"></script>
