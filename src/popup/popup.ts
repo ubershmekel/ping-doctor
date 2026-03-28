@@ -65,7 +65,10 @@ function renderAddresses(snapshot: StorageShape): void {
   }
 
   addressesEl.innerHTML = targets
-    .map((target) => `<li><strong>${target.label}</strong>: <code>${formatTarget(target.address)}</code></li>`)
+    .map(
+      (target) =>
+        `<li><strong>${target.label}</strong>: <code>${formatTarget(target.address)}</code></li>`,
+    )
     .join('');
 }
 
@@ -92,7 +95,7 @@ function renderRecentResults(snapshot: StorageShape): void {
   recentResultsEl.innerHTML = recent
     .map(
       (sample) =>
-        `<div class="result-row"><span>${new Date(sample.ts).toLocaleTimeString()}</span><span class="result-values">${sampleResultSummary(sample, snapshot)}</span></div>`
+        `<div class="result-row"><span>${new Date(sample.ts).toLocaleTimeString()}</span><span class="result-values">${sampleResultSummary(sample, snapshot)}</span></div>`,
     )
     .join('');
 }

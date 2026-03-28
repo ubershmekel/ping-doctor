@@ -7,7 +7,7 @@ import {
   ScatterController,
   Tooltip,
   type ChartDataset,
-  type Plugin
+  type Plugin,
 } from 'chart.js';
 import zoomPlugin from 'chartjs-plugin-zoom';
 import { firstFailedTargetId } from '../lib/diagnose';
@@ -15,7 +15,15 @@ import { probeValue } from '../lib/probe';
 import { getSettings, updateSettings } from '../lib/storage';
 import type { Outage, Sample, StorageShape, TargetConfig } from '../types';
 
-Chart.register(ScatterController, LineElement, PointElement, LinearScale, Tooltip, Legend, zoomPlugin);
+Chart.register(
+  ScatterController,
+  LineElement,
+  PointElement,
+  LinearScale,
+  Tooltip,
+  Legend,
+  zoomPlugin,
+);
 
 const form = document.querySelector<HTMLFormElement>('#settings-form');
 const intervalInput = document.querySelector<HTMLInputElement>('#poll-interval');
@@ -82,7 +90,10 @@ function formatLatency(value: number | null, targetId: string): string {
   return `${value}ms`;
 }
 
-function handleChartEvent(c: Chart, args: { event: { type: string; x: number | null; y: number | null } }): void {
+function handleChartEvent(
+  c: Chart,
+  args: { event: { type: string; x: number | null; y: number | null } },
+): void {
   const tip = failureTooltipEl;
   if (!tip) return;
   const { event } = args;
@@ -203,7 +214,7 @@ const chartEventPlugin: Plugin<'line'> = {
 
     ctx.restore();
   },
-  afterEvent: handleChartEvent
+  afterEvent: handleChartEvent,
 };
 
 Chart.register(chartEventPlugin);
@@ -279,9 +290,11 @@ function collectTargets(): TargetConfig[] {
   return rows
     .map((row) => {
       const id = row.querySelector<HTMLInputElement>('[data-field="id"]')?.value.trim() ?? '';
-      const enabled = row.querySelector<HTMLInputElement>('[data-field="enabled"]')?.checked ?? false;
+      const enabled =
+        row.querySelector<HTMLInputElement>('[data-field="enabled"]')?.checked ?? false;
       const label = row.querySelector<HTMLInputElement>('[data-field="label"]')?.value.trim() ?? '';
-      const address = row.querySelector<HTMLInputElement>('[data-field="address"]')?.value.trim() ?? '';
+      const address =
+        row.querySelector<HTMLInputElement>('[data-field="address"]')?.value.trim() ?? '';
 
       if (!id) {
         return null;
@@ -291,7 +304,7 @@ function collectTargets(): TargetConfig[] {
         id,
         enabled,
         label: label || 'Target',
-        address
+        address,
       };
     })
     .filter((target): target is TargetConfig => target !== null);
@@ -313,7 +326,10 @@ function isHealthySample(sample: Sample | undefined): boolean {
   return sample.enabledTargetIds.every((targetId) => sample.results[targetId] !== null);
 }
 
-function statusFromSample(sample: Sample | undefined, snapshot: StorageShape): { pill: string; text: string; sentence: string } {
+function statusFromSample(
+  sample: Sample | undefined,
+  snapshot: StorageShape,
+): { pill: string; text: string; sentence: string } {
   if (!sample) {
     return { pill: 'pill-degraded', text: 'Diagnosing', sentence: 'Diagnosing...' };
   }
@@ -324,11 +340,11 @@ function statusFromSample(sample: Sample | undefined, snapshot: StorageShape): {
 
   const firstDown = firstFailedTargetId(sample);
   const labelMap = targetLabelById(snapshot);
-  const label = firstDown ? labelMap.get(firstDown) ?? 'Target' : 'Target';
+  const label = firstDown ? (labelMap.get(firstDown) ?? 'Target') : 'Target';
   return {
     pill: 'pill-degraded',
     text: 'Degraded',
-    sentence: `${label} is unreachable`
+    sentence: `${label} is unreachable`,
   };
 }
 
@@ -365,7 +381,9 @@ function renderRecentResults(snapshot: StorageShape): void {
 
   const rows = recent
     .map((sample) => {
-      const cells = targets.map((t) => `<td>${formatLatency(probeValue(sample, t.id), t.id)}</td>`).join('');
+      const cells = targets
+        .map((t) => `<td>${formatLatency(probeValue(sample, t.id), t.id)}</td>`)
+        .join('');
       return `<tr><td>${new Date(sample.ts).toLocaleTimeString()}</td>${cells}</tr>`;
     })
     .join('');
@@ -423,11 +441,13 @@ function mergeLogItems(snapshot: StorageShape): Array<{ ts: number; html: string
       continue;
     }
 
-    const primaryLabel = outage.primaryTargetId ? labelMap.get(outage.primaryTargetId) ?? outage.primaryTargetId : 'Target';
+    const primaryLabel = outage.primaryTargetId
+      ? (labelMap.get(outage.primaryTargetId) ?? outage.primaryTargetId)
+      : 'Target';
 
     entries.push({
       ts: outage.start,
-      html: `<div class="outage-item"><strong>${new Date(outage.start).toLocaleString()} - ${outage.end ? new Date(outage.end).toLocaleString() : 'ongoing'}</strong> (${formatDurationMs(end - outage.start)}) on ${primaryLabel}<br /><span class="dim">Affected: ${describeAffected(outage, snapshot)}</span></div>`
+      html: `<div class="outage-item"><strong>${new Date(outage.start).toLocaleString()} - ${outage.end ? new Date(outage.end).toLocaleString() : 'ongoing'}</strong> (${formatDurationMs(end - outage.start)}) on ${primaryLabel}<br /><span class="dim">Affected: ${describeAffected(outage, snapshot)}</span></div>`,
     });
   }
 
@@ -443,7 +463,7 @@ function mergeLogItems(snapshot: StorageShape): Array<{ ts: number; html: string
 
     entries.push({
       ts: sample.ts,
-      html: `<div class="net-change">Network change detected - monitoring resumed (${new Date(sample.ts).toLocaleString()})</div>`
+      html: `<div class="net-change">Network change detected - monitoring resumed (${new Date(sample.ts).toLocaleString()})</div>`,
     });
   }
 
@@ -467,12 +487,23 @@ function calculateDayUptime(date: string, snapshot: StorageShape): number {
   return Number(((healthy / daySamples.length) * 100).toFixed(2));
 }
 
-function dayTargetStats(date: string, snapshot: StorageShape): Record<string, { total: number; failed: number; uptimePct: number; avgLatency: number }> {
+function dayTargetStats(
+  date: string,
+  snapshot: StorageShape,
+): Record<string, { total: number; failed: number; uptimePct: number; avgLatency: number }> {
   const summary = snapshot.daySummaries.find((d) => d.date === date);
   if (summary) {
-    const result: Record<string, { total: number; failed: number; uptimePct: number; avgLatency: number }> = {};
+    const result: Record<
+      string,
+      { total: number; failed: number; uptimePct: number; avgLatency: number }
+    > = {};
     for (const [id, t] of Object.entries(summary.targets)) {
-      result[id] = { total: t.totalPings, failed: t.failedPings, uptimePct: t.uptimePct, avgLatency: t.avgLatency };
+      result[id] = {
+        total: t.totalPings,
+        failed: t.failedPings,
+        uptimePct: t.uptimePct,
+        avgLatency: t.avgLatency,
+      };
     }
     return result;
   }
@@ -483,16 +514,27 @@ function dayTargetStats(date: string, snapshot: StorageShape): Record<string, { 
     for (const id of s.enabledTargetIds) targetIds.add(id);
   }
 
-  const result: Record<string, { total: number; failed: number; uptimePct: number; avgLatency: number }> = {};
+  const result: Record<
+    string,
+    { total: number; failed: number; uptimePct: number; avgLatency: number }
+  > = {};
   for (const id of targetIds) {
     const relevant = daySamples.filter((s) => s.enabledTargetIds.includes(id));
     const failed = relevant.filter((s) => s.results[id] === null).length;
-    const latencies = relevant.map((s) => s.results[id]).filter((v): v is number => typeof v === 'number');
+    const latencies = relevant
+      .map((s) => s.results[id])
+      .filter((v): v is number => typeof v === 'number');
     result[id] = {
       total: relevant.length,
       failed,
-      uptimePct: relevant.length === 0 ? -1 : Number((((relevant.length - failed) / relevant.length) * 100).toFixed(2)),
-      avgLatency: latencies.length > 0 ? Number((latencies.reduce((a, b) => a + b, 0) / latencies.length).toFixed(1)) : 0
+      uptimePct:
+        relevant.length === 0
+          ? -1
+          : Number((((relevant.length - failed) / relevant.length) * 100).toFixed(2)),
+      avgLatency:
+        latencies.length > 0
+          ? Number((latencies.reduce((a, b) => a + b, 0) / latencies.length).toFixed(1))
+          : 0,
     };
   }
   return result;
@@ -600,7 +642,8 @@ function renderChart(snapshot: StorageShape): void {
   }
 
   if (activeFailureStart !== null) {
-    const end = chartSamples.length > 0 ? chartSamples[chartSamples.length - 1].ts : activeFailureStart;
+    const end =
+      chartSamples.length > 0 ? chartSamples[chartSamples.length - 1].ts : activeFailureStart;
     chartFailureSpans.push({ start: activeFailureStart, end });
   }
 
@@ -616,7 +659,7 @@ function renderChart(snapshot: StorageShape): void {
     borderColor: palette[idx % palette.length],
     backgroundColor: palette[idx % palette.length],
     pointRadius: 2,
-    showLine: false
+    showLine: false,
   }));
 
   if (chart) {
@@ -636,28 +679,29 @@ function renderChart(snapshot: StorageShape): void {
         x: {
           type: 'linear',
           ticks: {
-            callback: (v) => new Date(Number(v)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          }
+            callback: (v) =>
+              new Date(Number(v)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
         },
         y: {
           beginAtZero: true,
-          title: { display: true, text: 'Latency (ms)' }
-        }
+          title: { display: true, text: 'Latency (ms)' },
+        },
       },
       plugins: {
         legend: { position: 'bottom' },
         tooltip: {
           callbacks: {
             title: (items) => new Date(Number(items[0].parsed.x)).toLocaleString(),
-            label: (item) => `${item.dataset.label}: ${item.parsed.y}ms`
-          }
+            label: (item) => `${item.dataset.label}: ${item.parsed.y}ms`,
+          },
         },
         zoom: {
           zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
-          pan: { enabled: true, mode: 'x' }
-        }
-      }
-    }
+          pan: { enabled: true, mode: 'x' },
+        },
+      },
+    },
   });
 
   if (!failureTooltipEl && chartCanvas.parentElement) {
@@ -675,7 +719,9 @@ function renderOutages(snapshot: StorageShape): void {
 
   outageTitleEl.textContent = selectedDate ? `Outage Log (${selectedDate})` : 'Outage Log';
   const rows = mergeLogItems(snapshot);
-  outageLogEl.innerHTML = rows.length ? rows.map((r) => r.html).join('') : '<p class="dim">No recent outages.</p>';
+  outageLogEl.innerHTML = rows.length
+    ? rows.map((r) => r.html).join('')
+    : '<p class="dim">No recent outages.</p>';
 }
 
 function renderCurrent(snapshot: StorageShape): void {
@@ -693,7 +739,14 @@ function renderCurrent(snapshot: StorageShape): void {
   }
 
   if (currentStatusEl) {
-    const rows = targets.map((target) => layerRow(target.label, formatTarget(target.address), probeValue(sample, target.id), target.id));
+    const rows = targets.map((target) =>
+      layerRow(
+        target.label,
+        formatTarget(target.address),
+        probeValue(sample, target.id),
+        target.id,
+      ),
+    );
     rows.push(`<p class="dim">${status.sentence}</p>`);
     currentStatusEl.innerHTML = rows.join('');
   }
@@ -782,7 +835,7 @@ form?.addEventListener('submit', async (event) => {
 
   await updateSettings({
     pollIntervalSec,
-    targets
+    targets,
   });
 
   await chrome.runtime.sendMessage({ type: 'settings-updated' });
@@ -852,8 +905,3 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 void load();
 void refreshStats();
-
-
-
-
-

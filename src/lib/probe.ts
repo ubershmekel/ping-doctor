@@ -16,7 +16,7 @@ async function timedFetch(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<
       method: 'GET',
       mode: 'no-cors',
       cache: 'no-store',
-      signal: controller.signal
+      signal: controller.signal,
     });
 
     return Math.round(performance.now() - start);
@@ -32,13 +32,20 @@ async function timedFetch(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<
 }
 
 function toUrl(address: string): string {
-  return address.startsWith('http://') || address.startsWith('https://') ? address : `http://${address}`;
+  return address.startsWith('http://') || address.startsWith('https://')
+    ? address
+    : `http://${address}`;
 }
 
-export async function probeAll(settings: Settings, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ProbeResult> {
+export async function probeAll(
+  settings: Settings,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<ProbeResult> {
   const enabledTargets = settings.targets.filter((target) => target.enabled);
   const entries = await Promise.all(
-    enabledTargets.map(async (target) => [target.id, await timedFetch(toUrl(target.address), timeoutMs)] as const)
+    enabledTargets.map(
+      async (target) => [target.id, await timedFetch(toUrl(target.address), timeoutMs)] as const,
+    ),
   );
 
   return Object.fromEntries(entries);

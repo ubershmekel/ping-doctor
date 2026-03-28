@@ -1,4 +1,4 @@
-import { failedTargetIds, isOutageSample } from "./diagnose";
+import { failedTargetIds, isOutageSample } from './diagnose';
 import type {
   DaySummary,
   Diagnosis,
@@ -8,13 +8,13 @@ import type {
   StorageShape,
   TargetConfig,
   TargetId,
-} from "../types";
+} from '../types';
 
-const STORAGE_KEY = "pingdoctor";
-const DB_NAME = "pingdoctor-events";
+const STORAGE_KEY = 'pingdoctor';
+const DB_NAME = 'pingdoctor-events';
 const DB_VERSION = 1;
-const SAMPLES_STORE = "samples";
-const OUTAGES_STORE = "outages";
+const SAMPLES_STORE = 'samples';
+const OUTAGES_STORE = 'outages';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RETENTION_MS = 7 * DAY_MS;
 
@@ -22,15 +22,15 @@ export const DEFAULT_SETTINGS: Settings = {
   pollIntervalSec: 30,
   targets: [
     {
-      id: "router",
-      label: "Wifi Router",
-      address: "192.168.1.1",
+      id: 'router',
+      label: 'Wifi Router',
+      address: '192.168.1.1',
       enabled: true,
     },
     {
-      id: "site",
-      label: "Internet Site",
-      address: "connectivitycheck.gstatic.com/generate_204",
+      id: 'site',
+      label: 'Internet Site',
+      address: 'connectivitycheck.gstatic.com/generate_204',
       enabled: true,
     },
   ],
@@ -48,7 +48,7 @@ const DEFAULT_STORAGE: StorageShape = {
   },
 };
 
-type MetaShape = Omit<StorageShape, "samples" | "outages"> & {
+type MetaShape = Omit<StorageShape, 'samples' | 'outages'> & {
   samples?: Sample[];
   outages?: Outage[];
 };
@@ -59,8 +59,8 @@ let idbUnavailable = false;
 function localDate(ts: number): string {
   const d = new Date(ts);
   const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
@@ -74,11 +74,11 @@ function isTargetConfig(value: unknown): value is TargetConfig {
   const target = value as TargetConfig;
   return (
     !!target &&
-    typeof target.id === "string" &&
+    typeof target.id === 'string' &&
     target.id.length > 0 &&
-    typeof target.label === "string" &&
-    typeof target.address === "string" &&
-    typeof target.enabled === "boolean"
+    typeof target.label === 'string' &&
+    typeof target.address === 'string' &&
+    typeof target.enabled === 'boolean'
   );
 }
 
@@ -98,7 +98,7 @@ function sanitizeTargets(targets: TargetConfig[]): TargetConfig[] {
     seen.add(target.id);
     next.push({
       id: target.id,
-      label: target.label.trim() || "Target",
+      label: target.label.trim() || 'Target',
       address: target.address.trim(),
       enabled: target.enabled,
     });
@@ -123,10 +123,7 @@ function normalizeMeta(data?: Partial<MetaShape>): MetaShape {
   }
 
   const pollInterval = Number(data?.settings?.pollIntervalSec);
-  const pollIntervalSec =
-    Number.isFinite(pollInterval) && pollInterval >= 1
-      ? pollInterval
-      : 30;
+  const pollIntervalSec = Number.isFinite(pollInterval) && pollInterval >= 1 ? pollInterval : 30;
 
   return {
     settings: {
@@ -154,9 +151,7 @@ async function writeMeta(data: MetaShape): Promise<void> {
 
 function canUseIndexedDb(): boolean {
   return (
-    !idbUnavailable &&
-    typeof indexedDB !== "undefined" &&
-    typeof indexedDB.open === "function"
+    !idbUnavailable && typeof indexedDB !== 'undefined' && typeof indexedDB.open === 'function'
   );
 }
 
@@ -173,24 +168,23 @@ function getDatabase(): Promise<IDBDatabase> {
 
       if (!db.objectStoreNames.contains(SAMPLES_STORE)) {
         const sampleStore = db.createObjectStore(SAMPLES_STORE, {
-          keyPath: "id",
+          keyPath: 'id',
           autoIncrement: true,
         });
-        sampleStore.createIndex("ts", "ts", { unique: false });
+        sampleStore.createIndex('ts', 'ts', { unique: false });
       }
 
       if (!db.objectStoreNames.contains(OUTAGES_STORE)) {
         const outageStore = db.createObjectStore(OUTAGES_STORE, {
-          keyPath: "id",
+          keyPath: 'id',
           autoIncrement: true,
         });
-        outageStore.createIndex("start", "start", { unique: false });
+        outageStore.createIndex('start', 'start', { unique: false });
       }
     };
 
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () =>
-      reject(request.error ?? new Error("Failed to open IndexedDB"));
+    request.onerror = () => reject(request.error ?? new Error('Failed to open IndexedDB'));
   });
 
   dbPromise.catch((error) => {
@@ -205,8 +199,7 @@ function getDatabase(): Promise<IDBDatabase> {
 function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () =>
-      reject(request.error ?? new Error("IndexedDB request failed"));
+    request.onerror = () => reject(request.error ?? new Error('IndexedDB request failed'));
   });
 }
 
@@ -214,18 +207,15 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
     transaction.onerror = () =>
-      reject(transaction.error ?? new Error("IndexedDB transaction failed"));
+      reject(transaction.error ?? new Error('IndexedDB transaction failed'));
     transaction.onabort = () =>
-      reject(transaction.error ?? new Error("IndexedDB transaction aborted"));
+      reject(transaction.error ?? new Error('IndexedDB transaction aborted'));
   });
 }
 
-async function appendEvent<T extends Sample | Outage>(
-  storeName: string,
-  value: T,
-): Promise<void> {
+async function appendEvent<T extends Sample | Outage>(storeName: string, value: T): Promise<void> {
   const db = await getDatabase();
-  const tx = db.transaction(storeName, "readwrite");
+  const tx = db.transaction(storeName, 'readwrite');
   tx.objectStore(storeName).add(value);
   await transactionDone(tx);
 }
@@ -237,7 +227,7 @@ async function queryEvents<T>(
   maxTs: number | null,
 ): Promise<T[]> {
   const db = await getDatabase();
-  const tx = db.transaction(storeName, "readonly");
+  const tx = db.transaction(storeName, 'readonly');
   const index = tx.objectStore(storeName).index(indexName);
 
   const range =
@@ -253,8 +243,7 @@ async function queryEvents<T>(
   const rows: T[] = [];
 
   await new Promise<void>((resolve, reject) => {
-    request.onerror = () =>
-      reject(request.error ?? new Error("IndexedDB cursor failed"));
+    request.onerror = () => reject(request.error ?? new Error('IndexedDB cursor failed'));
     request.onsuccess = () => {
       const cursor = request.result;
       if (!cursor) {
@@ -274,7 +263,7 @@ async function queryEvents<T>(
 
 async function clearEventStores(): Promise<void> {
   const db = await getDatabase();
-  const tx = db.transaction([SAMPLES_STORE, OUTAGES_STORE], "readwrite");
+  const tx = db.transaction([SAMPLES_STORE, OUTAGES_STORE], 'readwrite');
   tx.objectStore(SAMPLES_STORE).clear();
   tx.objectStore(OUTAGES_STORE).clear();
   await transactionDone(tx);
@@ -316,19 +305,17 @@ async function listSamples(
   if (!canUseIndexedDb()) {
     const all = meta.samples ?? [];
     return all.filter(
-      (s) =>
-        (minTs === null || s.ts >= minTs) && (maxTs === null || s.ts <= maxTs),
+      (s) => (minTs === null || s.ts >= minTs) && (maxTs === null || s.ts <= maxTs),
     );
   }
 
   try {
-    return await queryEvents<Sample>(SAMPLES_STORE, "ts", minTs, maxTs);
+    return await queryEvents<Sample>(SAMPLES_STORE, 'ts', minTs, maxTs);
   } catch {
     idbUnavailable = true;
     const all = meta.samples ?? [];
     return all.filter(
-      (s) =>
-        (minTs === null || s.ts >= minTs) && (maxTs === null || s.ts <= maxTs),
+      (s) => (minTs === null || s.ts >= minTs) && (maxTs === null || s.ts <= maxTs),
     );
   }
 }
@@ -342,25 +329,18 @@ async function listOutages(
     const all = meta.outages ?? [];
     return all.filter(
       (o) =>
-        (minStart === null || o.start >= minStart) &&
-        (maxStart === null || o.start <= maxStart),
+        (minStart === null || o.start >= minStart) && (maxStart === null || o.start <= maxStart),
     );
   }
 
   try {
-    return await queryEvents<Outage>(
-      OUTAGES_STORE,
-      "start",
-      minStart,
-      maxStart,
-    );
+    return await queryEvents<Outage>(OUTAGES_STORE, 'start', minStart, maxStart);
   } catch {
     idbUnavailable = true;
     const all = meta.outages ?? [];
     return all.filter(
       (o) =>
-        (minStart === null || o.start >= minStart) &&
-        (maxStart === null || o.start <= maxStart),
+        (minStart === null || o.start >= minStart) && (maxStart === null || o.start <= maxStart),
     );
   }
 }
@@ -381,11 +361,7 @@ async function clearEvents(meta: MetaShape): Promise<void> {
   }
 }
 
-function toSnapshot(
-  meta: MetaShape,
-  samples: Sample[],
-  outages: Outage[],
-): StorageShape {
+function toSnapshot(meta: MetaShape, samples: Sample[], outages: Outage[]): StorageShape {
   return {
     settings: meta.settings,
     daySummaries: meta.daySummaries,
@@ -410,15 +386,11 @@ export async function getSettings(): Promise<Settings> {
   return meta.settings;
 }
 
-export async function updateSettings(
-  next: Partial<Settings>,
-): Promise<Settings> {
+export async function updateSettings(next: Partial<Settings>): Promise<Settings> {
   const meta = await readMeta();
   meta.settings = {
     pollIntervalSec: next.pollIntervalSec ?? meta.settings.pollIntervalSec,
-    targets: next.targets
-      ? sanitizeTargets(next.targets)
-      : meta.settings.targets,
+    targets: next.targets ? sanitizeTargets(next.targets) : meta.settings.targets,
   };
 
   if (meta.settings.targets.length === 0) {
@@ -450,10 +422,7 @@ export async function clearAllData(): Promise<void> {
 }
 
 function mergeOutageTargets(outage: Outage, sample: Sample): Outage {
-  const next = new Set([
-    ...outage.affectedTargetIds,
-    ...failedTargetIds(sample),
-  ]);
+  const next = new Set([...outage.affectedTargetIds, ...failedTargetIds(sample)]);
   return {
     ...outage,
     affectedTargetIds: Array.from(next),
@@ -473,10 +442,7 @@ export async function recordSample(
 
   if (meta.state.currentOutage) {
     if (isOutage) {
-      meta.state.currentOutage = mergeOutageTargets(
-        meta.state.currentOutage,
-        sample,
-      );
+      meta.state.currentOutage = mergeOutageTargets(meta.state.currentOutage, sample);
     } else {
       meta.state.currentOutage.end = sample.ts;
       await appendOutage(meta.state.currentOutage, meta);
@@ -495,11 +461,7 @@ export async function recordSample(
   await writeMeta(meta);
 }
 
-function summarizeDay(
-  date: string,
-  samples: Sample[],
-  outages: Outage[],
-): DaySummary {
+function summarizeDay(date: string, samples: Sample[], outages: Outage[]): DaySummary {
   const targetIds = new Set<string>();
   for (const sample of samples) {
     for (const targetId of sample.enabledTargetIds) {
@@ -507,23 +469,25 @@ function summarizeDay(
     }
   }
 
-  const targets: Record<string, import("../types").TargetDaySummary> = {};
+  const targets: Record<string, import('../types').TargetDaySummary> = {};
   for (const targetId of targetIds) {
     const relevant = samples.filter((s) => s.enabledTargetIds.includes(targetId));
     const latencies = relevant
       .map((s) => s.results[targetId])
-      .filter((v): v is number => typeof v === "number");
+      .filter((v): v is number => typeof v === 'number');
     const failedPings = relevant.filter((s) => s.results[targetId] === null).length;
 
     targets[targetId] = {
       totalPings: relevant.length,
       failedPings,
-      uptimePct: relevant.length === 0
-        ? -1
-        : Number((((relevant.length - failedPings) / relevant.length) * 100).toFixed(2)),
-      avgLatency: latencies.length > 0
-        ? Number((latencies.reduce((a, b) => a + b, 0) / latencies.length).toFixed(1))
-        : 0,
+      uptimePct:
+        relevant.length === 0
+          ? -1
+          : Number((((relevant.length - failedPings) / relevant.length) * 100).toFixed(2)),
+      avgLatency:
+        latencies.length > 0
+          ? Number((latencies.reduce((a, b) => a + b, 0) / latencies.length).toFixed(1))
+          : 0,
     };
   }
 
@@ -534,11 +498,7 @@ function summarizeDay(
   };
 }
 
-function clipOutageToDay(
-  outage: Outage,
-  dayStart: number,
-  dayEnd: number,
-): Outage | null {
+function clipOutageToDay(outage: Outage, dayStart: number, dayEnd: number): Outage | null {
   const outageEnd = outage.end ?? dayEnd;
   if (outage.start > dayEnd || outageEnd < dayStart) {
     return null;
@@ -570,9 +530,7 @@ export async function runRollup(now = Date.now()): Promise<void> {
     byDate.set(date, list);
   }
 
-  const summaryMap = new Map<string, DaySummary>(
-    meta.daySummaries.map((s) => [s.date, s]),
-  );
+  const summaryMap = new Map<string, DaySummary>(meta.daySummaries.map((s) => [s.date, s]));
 
   for (const [date, samples] of byDate) {
     const dayStart = startOfLocalDay(samples[0].ts);
@@ -584,9 +542,7 @@ export async function runRollup(now = Date.now()): Promise<void> {
     summaryMap.set(date, summarizeDay(date, samples, dayOutages));
   }
 
-  meta.daySummaries = Array.from(summaryMap.values()).sort((a, b) =>
-    a.date.localeCompare(b.date),
-  );
+  meta.daySummaries = Array.from(summaryMap.values()).sort((a, b) => a.date.localeCompare(b.date));
   await writeMeta(meta);
 }
 

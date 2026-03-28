@@ -9,7 +9,7 @@ import {
   recordSample,
   runRollup,
   setLastLocalIp,
-  updateSettings
+  updateSettings,
 } from '../lib/storage';
 
 const ALARM_NAME = 'pingdoctor-poll';
@@ -23,7 +23,7 @@ async function scheduleAlarm(): Promise<void> {
   await chrome.alarms.clear(ALARM_NAME);
   chrome.alarms.create(ALARM_NAME, {
     delayInMinutes: 0.1,
-    periodInMinutes: minutesForPoll(settings.pollIntervalSec)
+    periodInMinutes: minutesForPoll(settings.pollIntervalSec),
   });
 }
 
@@ -49,7 +49,9 @@ async function runTick(): Promise<void> {
     const derived = deriveRouterIp(localIp);
     if (derived && shouldAutoUpdateRouterIp(routerTarget.address, snapshot.state.lastLocalIp)) {
       settings = await updateSettings({
-        targets: settings.targets.map((target) => (target.id === 'router' ? { ...target, address: derived } : target))
+        targets: settings.targets.map((target) =>
+          target.id === 'router' ? { ...target, address: derived } : target,
+        ),
       });
     }
   }
@@ -58,7 +60,9 @@ async function runTick(): Promise<void> {
     await setLastLocalIp(localIp);
   }
 
-  const enabledTargetIds = settings.targets.filter((target) => target.enabled).map((target) => target.id);
+  const enabledTargetIds = settings.targets
+    .filter((target) => target.enabled)
+    .map((target) => target.id);
   const results = await probeAll(settings);
 
   const sample = {
@@ -66,7 +70,7 @@ async function runTick(): Promise<void> {
     results,
     enabledTargetIds,
     networkChanged,
-    localIp
+    localIp,
   };
 
   const diagnosis = diagnose(sample);
@@ -83,12 +87,16 @@ async function safeRunTick(source: string): Promise<void> {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  void scheduleAlarm().catch((error) => console.error('[PingDoctor] Failed to schedule alarm on install', error));
+  void scheduleAlarm().catch((error) =>
+    console.error('[PingDoctor] Failed to schedule alarm on install', error),
+  );
   void safeRunTick('onInstalled');
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  void scheduleAlarm().catch((error) => console.error('[PingDoctor] Failed to schedule alarm on startup', error));
+  void scheduleAlarm().catch((error) =>
+    console.error('[PingDoctor] Failed to schedule alarm on startup', error),
+  );
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {

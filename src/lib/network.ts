@@ -1,5 +1,7 @@
 export async function detectLocalIp(timeoutMs = 1500): Promise<string | null> {
-  const RTC = (globalThis as Window & typeof globalThis & { RTCPeerConnection?: typeof RTCPeerConnection }).RTCPeerConnection;
+  const RTC = (
+    globalThis as Window & typeof globalThis & { RTCPeerConnection?: typeof RTCPeerConnection }
+  ).RTCPeerConnection;
   if (!RTC) {
     return null;
   }

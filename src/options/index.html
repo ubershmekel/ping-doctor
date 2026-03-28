@@ -6,32 +6,115 @@
     <title>PingDoctor Options</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
     <style>
-      .target-row { border: 1px solid var(--pico-muted-border-color); border-radius: 8px; padding: 0.9rem; margin-bottom: 0.8rem; }
-      .target-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
-      .target-head strong { font-size: 0.95rem; }
-      .target-enabled { display: flex; align-items: center; gap: 0.5rem; }
-      .status-pill { border-radius: 999px; padding: 0.2rem 0.6rem; font-size: 0.85rem; font-weight: 600; }
-      .pill-healthy { background: #1f9d55; color: #fff; }
-      .pill-degraded { background: #d69e2e; color: #fff; }
-      .stats-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
-      .layer-row { display: grid; grid-template-columns: 1fr auto auto; gap: 0.5rem; align-items: center; font-size: 0.9rem; }
-      .down-state { color: #7f1d1d; font-weight: 700; }
-      .latency-warn { color: #d69e2e; font-weight: 600; }
-      .avg-label { font-size: 0.75rem; opacity: 0.6; font-weight: 400; }
-      .results-table { width: auto; font-size: 0.85rem; margin-bottom: 0.5rem; }
-      .results-table th { font-weight: 600; font-size: 0.8rem; padding: 0.3rem 0.6rem; }
-      .results-table td { padding: 0.25rem 0.6rem; }
-      .failure-tooltip {
-        position: absolute; display: none; background: #1a1a2e; color: #fff;
-        padding: 8px 12px; border-radius: 6px; font-size: 0.8rem;
-        pointer-events: none; z-index: 10; white-space: nowrap;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      .target-row {
+        border: 1px solid var(--pico-muted-border-color);
+        border-radius: 8px;
+        padding: 0.9rem;
+        margin-bottom: 0.8rem;
       }
-      .dim { opacity: 0.75; font-size: 0.85rem; }
-      .outage-item { border-left: 3px solid var(--pico-muted-border-color); padding-left: 0.6rem; margin-bottom: 0.7rem; }
-      .net-change { border-top: 1px dashed var(--pico-muted-border-color); padding-top: 0.45rem; margin: 0.5rem 0; font-size: 0.85rem; }
-      .clickable-day { cursor: pointer; }
-      .day-label { font-size: 11px; fill: currentColor; opacity: 0.8; }
+      .target-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+      }
+      .target-head strong {
+        font-size: 0.95rem;
+      }
+      .target-enabled {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .status-pill {
+        border-radius: 999px;
+        padding: 0.2rem 0.6rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+      }
+      .pill-healthy {
+        background: #1f9d55;
+        color: #fff;
+      }
+      .pill-degraded {
+        background: #d69e2e;
+        color: #fff;
+      }
+      .stats-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+      }
+      .layer-row {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 0.5rem;
+        align-items: center;
+        font-size: 0.9rem;
+      }
+      .down-state {
+        color: #7f1d1d;
+        font-weight: 700;
+      }
+      .latency-warn {
+        color: #d69e2e;
+        font-weight: 600;
+      }
+      .avg-label {
+        font-size: 0.75rem;
+        opacity: 0.6;
+        font-weight: 400;
+      }
+      .results-table {
+        width: auto;
+        font-size: 0.85rem;
+        margin-bottom: 0.5rem;
+      }
+      .results-table th {
+        font-weight: 600;
+        font-size: 0.8rem;
+        padding: 0.3rem 0.6rem;
+      }
+      .results-table td {
+        padding: 0.25rem 0.6rem;
+      }
+      .failure-tooltip {
+        position: absolute;
+        display: none;
+        background: #1a1a2e;
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        pointer-events: none;
+        z-index: 10;
+        white-space: nowrap;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      }
+      .dim {
+        opacity: 0.75;
+        font-size: 0.85rem;
+      }
+      .outage-item {
+        border-left: 3px solid var(--pico-muted-border-color);
+        padding-left: 0.6rem;
+        margin-bottom: 0.7rem;
+      }
+      .net-change {
+        border-top: 1px dashed var(--pico-muted-border-color);
+        padding-top: 0.45rem;
+        margin: 0.5rem 0;
+        font-size: 0.85rem;
+      }
+      .clickable-day {
+        cursor: pointer;
+      }
+      .day-label {
+        font-size: 11px;
+        fill: currentColor;
+        opacity: 0.8;
+      }
       .chart-frame {
         position: relative;
         width: min(100%, 50vw);
@@ -58,9 +141,17 @@
 
       <details>
         <summary>How to find your router IP</summary>
-        <p><strong>Windows:</strong> Run <code>ipconfig</code> and use the <em>Default Gateway</em> value.</p>
-        <p><strong>macOS:</strong> Run <code>route -n get default</code> and use <em>gateway</em>.</p>
-        <p><strong>Linux:</strong> Run <code>ip route</code> and use the address after <em>default via</em>.</p>
+        <p>
+          <strong>Windows:</strong> Run <code>ipconfig</code> and use the
+          <em>Default Gateway</em> value.
+        </p>
+        <p>
+          <strong>macOS:</strong> Run <code>route -n get default</code> and use <em>gateway</em>.
+        </p>
+        <p>
+          <strong>Linux:</strong> Run <code>ip route</code> and use the address after
+          <em>default via</em>.
+        </p>
       </details>
 
       <p id="status"></p>
@@ -93,11 +184,17 @@
         <p class="dim">Click a day to filter outage log.</p>
       </section>
 
-          <form id="settings-form">
+      <form id="settings-form">
         <h4>Ping Targets</h4>
-                  <button type="submit">Save</button>
+        <button type="submit">Save</button>
 
-        <button id="toggle-targets" type="button" class="secondary" aria-expanded="false" aria-controls="targets-editor">
+        <button
+          id="toggle-targets"
+          type="button"
+          class="secondary"
+          aria-expanded="false"
+          aria-controls="targets-editor"
+        >
           Edit Ping Targets
         </button>
         <div id="targets-editor" hidden>
@@ -142,8 +239,3 @@
     <script type="module" src="./options.ts"></script>
   </body>
 </html>
-
-
-
-
-

@@ -6,17 +6,52 @@
     <title>PingDoctor</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
     <style>
-      :root { color-scheme: light dark; }
-      body { width: 420px; margin: 0; padding: 0.75rem; }
-      header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
-      h4 { margin-bottom: 0.45rem; }
-      ul { margin: 0; padding-left: 1.1rem; }
-      li { margin-bottom: 0.35rem; }
-      .dim { opacity: 0.75; font-size: 0.85rem; }
-      .result-row { display: grid; grid-template-columns: 1fr auto; gap: 0.4rem; align-items: baseline; }
-      .result-values { font-size: 0.85rem; text-align: right; }
-      .down-state { color: #7f1d1d; font-weight: 600; }
-      .latency-warn { color: #d69e2e; font-weight: 600; }
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        width: 420px;
+        margin: 0;
+        padding: 0.75rem;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+      }
+      h4 {
+        margin-bottom: 0.45rem;
+      }
+      ul {
+        margin: 0;
+        padding-left: 1.1rem;
+      }
+      li {
+        margin-bottom: 0.35rem;
+      }
+      .dim {
+        opacity: 0.75;
+        font-size: 0.85rem;
+      }
+      .result-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 0.4rem;
+        align-items: baseline;
+      }
+      .result-values {
+        font-size: 0.85rem;
+        text-align: right;
+      }
+      .down-state {
+        color: #7f1d1d;
+        font-weight: 600;
+      }
+      .latency-warn {
+        color: #d69e2e;
+        font-weight: 600;
+      }
     </style>
   </head>
   <body>
