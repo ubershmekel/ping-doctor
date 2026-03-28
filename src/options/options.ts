@@ -648,7 +648,8 @@ function renderChart(snapshot: StorageShape): void {
         legend: { position: 'bottom' },
         tooltip: {
           callbacks: {
-            title: (items) => new Date(Number(items[0].parsed.x)).toLocaleString()
+            title: (items) => new Date(Number(items[0].parsed.x)).toLocaleString(),
+            label: (item) => `${item.dataset.label}: ${item.parsed.y}ms`
           }
         },
         zoom: {
