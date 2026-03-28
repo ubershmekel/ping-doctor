@@ -93,19 +93,17 @@
         <p class="dim">Click a day to filter outage log.</p>
       </section>
 
-            <form id="settings-form">
+          <form id="settings-form">
         <h4>Ping Targets</h4>
+                  <button type="submit">Save</button>
+
         <button id="toggle-targets" type="button" class="secondary" aria-expanded="false" aria-controls="targets-editor">
           Edit Ping Targets
         </button>
         <div id="targets-editor" hidden>
           <label>
-            Poll Interval
-            <select id="poll-interval" name="pollIntervalSec">
-              <option value="15">15 seconds</option>
-              <option value="30">30 seconds</option>
-              <option value="60">60 seconds</option>
-            </select>
+            Poll Interval (seconds)
+            <input id="poll-interval" name="pollIntervalSec" type="number" min="1" step="1" />
           </label>
           <div id="targets-list"></div>
           <button id="add-target" type="button" class="secondary">Add Target</button>

@@ -122,9 +122,9 @@ function normalizeMeta(data?: Partial<MetaShape>): MetaShape {
     };
   }
 
-  const pollInterval = data?.settings?.pollIntervalSec;
+  const pollInterval = Number(data?.settings?.pollIntervalSec);
   const pollIntervalSec =
-    pollInterval === 15 || pollInterval === 30 || pollInterval === 60
+    Number.isFinite(pollInterval) && pollInterval >= 1
       ? pollInterval
       : 30;
 

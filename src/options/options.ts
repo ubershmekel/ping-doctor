@@ -18,7 +18,7 @@ import type { Outage, Sample, StorageShape, TargetConfig } from '../types';
 Chart.register(ScatterController, LineElement, PointElement, LinearScale, Tooltip, Legend, zoomPlugin);
 
 const form = document.querySelector<HTMLFormElement>('#settings-form');
-const intervalInput = document.querySelector<HTMLSelectElement>('#poll-interval');
+const intervalInput = document.querySelector<HTMLInputElement>('#poll-interval');
 const targetsList = document.querySelector<HTMLDivElement>('#targets-list');
 const addTargetBtn = document.querySelector<HTMLButtonElement>('#add-target');
 const toggleTargetsBtn = document.querySelector<HTMLButtonElement>('#toggle-targets');
@@ -778,7 +778,7 @@ form?.addEventListener('submit', async (event) => {
     return;
   }
 
-  const pollIntervalSec = Number(intervalInput.value) as 15 | 30 | 60;
+  const pollIntervalSec = Number(intervalInput.value);
 
   await updateSettings({
     pollIntervalSec,

@@ -39,7 +39,7 @@ export type DaySummary = {
 };
 
 export type Settings = {
-  pollIntervalSec: 15 | 30 | 60;
+  pollIntervalSec: number;
   targets: TargetConfig[];
 };
 
