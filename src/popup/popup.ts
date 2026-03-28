@@ -41,7 +41,8 @@ function renderAddresses(snapshot: StorageShape): void {
 function sampleResultSummary(sample: Sample, snapshot: StorageShape): string {
   const values = enabledTargets(snapshot).map((target) => {
     const value = probeValue(sample, target.id);
-    return `${target.label}: ${value === null ? 'down' : `${value}ms`}`;
+    const state = value === null ? '<span class="down-state">down</span>' : `${value}ms`;
+    return `${target.label}: ${state}`;
   });
 
   return values.join(' | ');

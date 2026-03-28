@@ -15,6 +15,9 @@
       .pill-degraded { background: #d69e2e; color: #fff; }
       .stats-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
       .layer-row { display: grid; grid-template-columns: 1fr auto auto; gap: 0.5rem; align-items: center; font-size: 0.9rem; }
+      .down-state { color: #7f1d1d; font-weight: 700; }
+      .result-row { display: grid; grid-template-columns: 1fr auto; gap: 0.4rem; align-items: baseline; }
+      .result-values { font-size: 0.85rem; text-align: right; }
       .dim { opacity: 0.75; font-size: 0.85rem; }
       .outage-item { border-left: 3px solid var(--pico-muted-border-color); padding-left: 0.6rem; margin-bottom: 0.7rem; }
       .net-change { border-top: 1px dashed var(--pico-muted-border-color); padding-top: 0.45rem; margin: 0.5rem 0; font-size: 0.85rem; }
@@ -88,6 +91,9 @@
         <h4>Current Status</h4>
         <div id="current-status"></div>
         <button id="check-now" type="button">Check Now</button>
+
+        <h4>Recent Results</h4>
+        <div id="recent-results"></div>
 
         <h4>Last 24h Chart</h4>
         <div class="chart-frame">

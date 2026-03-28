@@ -30,6 +30,7 @@ const statusEl = document.querySelector<HTMLParagraphElement>('#status');
 
 const checkNowButton = document.querySelector<HTMLButtonElement>('#check-now');
 const currentStatusEl = document.querySelector<HTMLDivElement>('#current-status');
+const recentResultsEl = document.querySelector<HTMLDivElement>('#recent-results');
 const statusPill = document.querySelector<HTMLSpanElement>('#status-pill');
 const lastCheckEl = document.querySelector<HTMLParagraphElement>('#last-check');
 const outageLogEl = document.querySelector<HTMLDivElement>('#outage-log');
@@ -249,12 +250,41 @@ function statusFromSample(sample: Sample | undefined, snapshot: StorageShape): {
 }
 
 function layerRow(label: string, target: string, value: number | null): string {
-  const state = value === null ? 'down' : `${value}ms`;
+  const state = value === null ? '<span class="down-state">down</span>' : `${value}ms`;
   return `<div class="layer-row"><span>${label}</span><code>${target}</code><strong>${state}</strong></div>`;
 }
 
 function formatTarget(value: string): string {
   return value.replace(/^https?:\/\//, '');
+}
+
+function sampleResultSummary(sample: Sample, snapshot: StorageShape): string {
+  const values = enabledTargets(snapshot).map((target) => {
+    const value = probeValue(sample, target.id);
+    const state = value === null ? '<span class="down-state">down</span>' : `${value}ms`;
+    return `${target.label}: ${state}`;
+  });
+
+  return values.join(' | ');
+}
+
+function renderRecentResults(snapshot: StorageShape): void {
+  if (!recentResultsEl) {
+    return;
+  }
+
+  const recent = [...snapshot.samples].sort((a, b) => b.ts - a.ts).slice(0, 5);
+  if (recent.length === 0) {
+    recentResultsEl.innerHTML = '<p class="dim">No results yet.</p>';
+    return;
+  }
+
+  recentResultsEl.innerHTML = recent
+    .map(
+      (sample) =>
+        `<div class="result-row"><span>${new Date(sample.ts).toLocaleTimeString()}</span><span class="result-values">${sampleResultSummary(sample, snapshot)}</span></div>`
+    )
+    .join('');
 }
 
 function formatTimestamp(ts: number | null): string {
@@ -522,6 +552,7 @@ function renderCurrent(snapshot: StorageShape): void {
 
 function renderAllStats(snapshot: StorageShape): void {
   renderCurrent(snapshot);
+  renderRecentResults(snapshot);
   renderChart(snapshot);
   renderOutages(snapshot);
   renderHeatmap(snapshot);
