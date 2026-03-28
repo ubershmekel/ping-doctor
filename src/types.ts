@@ -25,10 +25,16 @@ export type Outage = {
   primaryTargetId: TargetId | null;
 };
 
+export type TargetDaySummary = {
+  totalPings: number;
+  failedPings: number;
+  uptimePct: number;
+  avgLatency: number;
+};
+
 export type DaySummary = {
   date: string;
-  uptimePct: number;
-  avgLatencyByTarget: Record<TargetId, number>;
+  targets: Record<TargetId, TargetDaySummary>;
   outages: Outage[];
 };
 

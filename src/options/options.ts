@@ -367,19 +367,53 @@ function mergeLogItems(snapshot: StorageShape): Array<{ ts: number; html: string
 function calculateDayUptime(date: string, snapshot: StorageShape): number {
   const summary = snapshot.daySummaries.find((d) => d.date === date);
   if (summary) {
-    return summary.uptimePct;
+    const entries = Object.values(summary.targets);
+    if (entries.length === 0) return -1;
+    return Math.min(...entries.map((t) => t.uptimePct));
   }
 
   const daySamples = snapshot.samples.filter((s) => dayString(s.ts) === date);
   if (daySamples.length === 0) {
-    return 100;
+    return -1;
   }
 
   const healthy = daySamples.filter((s) => isHealthySample(s)).length;
   return Number(((healthy / daySamples.length) * 100).toFixed(2));
 }
 
+function dayTargetStats(date: string, snapshot: StorageShape): Record<string, { total: number; failed: number; uptimePct: number; avgLatency: number }> {
+  const summary = snapshot.daySummaries.find((d) => d.date === date);
+  if (summary) {
+    const result: Record<string, { total: number; failed: number; uptimePct: number; avgLatency: number }> = {};
+    for (const [id, t] of Object.entries(summary.targets)) {
+      result[id] = { total: t.totalPings, failed: t.failedPings, uptimePct: t.uptimePct, avgLatency: t.avgLatency };
+    }
+    return result;
+  }
+
+  const daySamples = snapshot.samples.filter((s) => dayString(s.ts) === date);
+  const targetIds = new Set<string>();
+  for (const s of daySamples) {
+    for (const id of s.enabledTargetIds) targetIds.add(id);
+  }
+
+  const result: Record<string, { total: number; failed: number; uptimePct: number; avgLatency: number }> = {};
+  for (const id of targetIds) {
+    const relevant = daySamples.filter((s) => s.enabledTargetIds.includes(id));
+    const failed = relevant.filter((s) => s.results[id] === null).length;
+    const latencies = relevant.map((s) => s.results[id]).filter((v): v is number => typeof v === 'number');
+    result[id] = {
+      total: relevant.length,
+      failed,
+      uptimePct: relevant.length === 0 ? -1 : Number((((relevant.length - failed) / relevant.length) * 100).toFixed(2)),
+      avgLatency: latencies.length > 0 ? Number((latencies.reduce((a, b) => a + b, 0) / latencies.length).toFixed(1)) : 0
+    };
+  }
+  return result;
+}
+
 function colorForUptime(uptime: number): string {
+  if (uptime < 0) return '#868e96';
   if (uptime >= 99.5) return '#2f9e44';
   if (uptime >= 95) return '#74b816';
   if (uptime >= 80) return '#f08c00';
@@ -408,6 +442,9 @@ function renderHeatmap(snapshot: StorageShape): void {
 
   days.forEach((date, idx) => {
     const uptime = calculateDayUptime(date, snapshot);
+    const stats = dayTargetStats(date, snapshot);
+    const labelMap = targetLabelById(snapshot);
+    const noData = uptime < 0;
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     rect.setAttribute('x', String(idx * (cellW + 8)));
@@ -432,11 +469,23 @@ function renderHeatmap(snapshot: StorageShape): void {
     pct.setAttribute('x', String(idx * (cellW + 8) + 6));
     pct.setAttribute('y', String(y + 22));
     pct.setAttribute('class', 'day-label');
-    pct.textContent = `${uptime.toFixed(1)}%`;
+    pct.textContent = noData ? 'No data' : `${uptime.toFixed(1)}%`;
+
+    const detail = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    if (noData) {
+      detail.textContent = `${date}: No data collected`;
+    } else {
+      const lines = Object.entries(stats).map(([id, t]) => {
+        const name = labelMap.get(id) ?? id;
+        return `${name}: ${t.total} pings, ${t.failed} failed (${t.uptimePct.toFixed(1)}%)`;
+      });
+      detail.textContent = `${date}\n${lines.join('\n')}`;
+    }
 
     g.appendChild(label);
     g.appendChild(rect);
     g.appendChild(pct);
+    g.appendChild(detail);
     heatmapEl.appendChild(g);
   });
 }

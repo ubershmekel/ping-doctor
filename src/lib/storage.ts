@@ -460,12 +460,6 @@ function mergeOutageTargets(outage: Outage, sample: Sample): Outage {
   };
 }
 
-function isHealthySample(sample: Sample): boolean {
-  return sample.enabledTargetIds.every(
-    (targetId) => sample.results[targetId] !== null,
-  );
-}
-
 export async function recordSample(
   sample: Sample,
   diagnosis: Diagnosis,
@@ -506,12 +500,6 @@ function summarizeDay(
   samples: Sample[],
   outages: Outage[],
 ): DaySummary {
-  const healthyCount = samples.filter((s) => isHealthySample(s)).length;
-  const uptimePct =
-    samples.length === 0
-      ? 100
-      : Number(((healthyCount / samples.length) * 100).toFixed(2));
-
   const targetIds = new Set<string>();
   for (const sample of samples) {
     for (const targetId of sample.enabledTargetIds) {
@@ -519,22 +507,29 @@ function summarizeDay(
     }
   }
 
-  const avgLatencyByTarget: Record<string, number> = {};
+  const targets: Record<string, import("../types").TargetDaySummary> = {};
   for (const targetId of targetIds) {
-    const values = samples
+    const relevant = samples.filter((s) => s.enabledTargetIds.includes(targetId));
+    const latencies = relevant
       .map((s) => s.results[targetId])
-      .filter((value): value is number => typeof value === "number");
+      .filter((v): v is number => typeof v === "number");
+    const failedPings = relevant.filter((s) => s.results[targetId] === null).length;
 
-    avgLatencyByTarget[targetId] =
-      values.length > 0
-        ? Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(1))
-        : 0;
+    targets[targetId] = {
+      totalPings: relevant.length,
+      failedPings,
+      uptimePct: relevant.length === 0
+        ? -1
+        : Number((((relevant.length - failedPings) / relevant.length) * 100).toFixed(2)),
+      avgLatency: latencies.length > 0
+        ? Number((latencies.reduce((a, b) => a + b, 0) / latencies.length).toFixed(1))
+        : 0,
+    };
   }
 
   return {
     date,
-    uptimePct,
-    avgLatencyByTarget,
+    targets,
     outages,
   };
 }
