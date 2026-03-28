@@ -35,21 +35,24 @@
       </details>
 
       <form id="settings-form">
-        <label>
-          Poll Interval
-          <select id="poll-interval" name="pollIntervalSec">
-            <option value="15">15 seconds</option>
-            <option value="30">30 seconds</option>
-            <option value="60">60 seconds</option>
-          </select>
-        </label>
-
         <h4>Ping Targets</h4>
-        <div id="targets-list"></div>
-        <button id="add-target" type="button" class="secondary">Add Target</button>
-
-        <hr />
-        <button type="submit">Save</button>
+        <button id="toggle-targets" type="button" class="secondary" aria-expanded="false" aria-controls="targets-editor">
+          Edit Ping Targets
+        </button>
+        <div id="targets-editor" hidden>
+          <label>
+            Poll Interval
+            <select id="poll-interval" name="pollIntervalSec">
+              <option value="15">15 seconds</option>
+              <option value="30">30 seconds</option>
+              <option value="60">60 seconds</option>
+            </select>
+          </label>
+          <div id="targets-list"></div>
+          <button id="add-target" type="button" class="secondary">Add Target</button>
+          <hr />
+          <button type="submit">Save</button>
+        </div>
       </form>
 
       <hr />
@@ -106,3 +109,4 @@
     <script type="module" src="./options.ts"></script>
   </body>
 </html>
+

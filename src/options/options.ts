@@ -21,6 +21,8 @@ const form = document.querySelector<HTMLFormElement>('#settings-form');
 const intervalInput = document.querySelector<HTMLSelectElement>('#poll-interval');
 const targetsList = document.querySelector<HTMLDivElement>('#targets-list');
 const addTargetBtn = document.querySelector<HTMLButtonElement>('#add-target');
+const toggleTargetsBtn = document.querySelector<HTMLButtonElement>('#toggle-targets');
+const targetsEditor = document.querySelector<HTMLDivElement>('#targets-editor');
 const targetTemplate = document.querySelector<HTMLTemplateElement>('#target-template');
 const exportBtn = document.querySelector<HTMLButtonElement>('#export-data');
 const clearBtn = document.querySelector<HTMLButtonElement>('#clear-data');
@@ -488,6 +490,21 @@ async function load(): Promise<void> {
 }
 
 addTargetBtn?.addEventListener('click', () => addTargetRow());
+toggleTargetsBtn?.addEventListener('click', () => {
+  if (!targetsEditor || !toggleTargetsBtn) {
+    return;
+  }
+
+  const isHidden = targetsEditor.hasAttribute('hidden');
+  if (isHidden) {
+    targetsEditor.removeAttribute('hidden');
+    toggleTargetsBtn.setAttribute('aria-expanded', 'true');
+    return;
+  }
+
+  targetsEditor.setAttribute('hidden', '');
+  toggleTargetsBtn.setAttribute('aria-expanded', 'false');
+});
 
 form?.addEventListener('submit', async (event) => {
   event.preventDefault();
