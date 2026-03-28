@@ -45,7 +45,6 @@
   <body>
     <main class="container">
       <h2>PingDoctor Settings</h2>
-      <p>Targets are fully user-defined. Add or remove as many as you want.</p>
 
       <details>
         <summary>How to find your router IP</summary>
@@ -54,30 +53,6 @@
         <p><strong>Linux:</strong> Run <code>ip route</code> and use the address after <em>default via</em>.</p>
       </details>
 
-      <form id="settings-form">
-        <h4>Ping Targets</h4>
-        <button id="toggle-targets" type="button" class="secondary" aria-expanded="false" aria-controls="targets-editor">
-          Edit Ping Targets
-        </button>
-        <div id="targets-editor" hidden>
-          <label>
-            Poll Interval
-            <select id="poll-interval" name="pollIntervalSec">
-              <option value="15">15 seconds</option>
-              <option value="30">30 seconds</option>
-              <option value="60">60 seconds</option>
-            </select>
-          </label>
-          <div id="targets-list"></div>
-          <button id="add-target" type="button" class="secondary">Add Target</button>
-          <hr />
-          <button type="submit">Save</button>
-        </div>
-      </form>
-
-      <hr />
-      <button id="export-data" class="secondary" type="button">Export data as JSON</button>
-      <button id="clear-data" class="contrast" type="button">Clear all data</button>
       <p id="status"></p>
 
       <hr />
@@ -107,6 +82,31 @@
         <svg id="heatmap" width="760" height="100" viewBox="0 0 760 100"></svg>
         <p class="dim">Click a day to filter outage log.</p>
       </section>
+
+            <form id="settings-form">
+        <h4>Ping Targets</h4>
+        <button id="toggle-targets" type="button" class="secondary" aria-expanded="false" aria-controls="targets-editor">
+          Edit Ping Targets
+        </button>
+        <div id="targets-editor" hidden>
+          <label>
+            Poll Interval
+            <select id="poll-interval" name="pollIntervalSec">
+              <option value="15">15 seconds</option>
+              <option value="30">30 seconds</option>
+              <option value="60">60 seconds</option>
+            </select>
+          </label>
+          <div id="targets-list"></div>
+          <button id="add-target" type="button" class="secondary">Add Target</button>
+          <hr />
+          <button type="submit">Save</button>
+        </div>
+      </form>
+
+      <hr />
+      <button id="export-data" class="secondary" type="button">Export data as JSON</button>
+      <button id="clear-data" class="contrast" type="button">Clear all data</button>
     </main>
 
     <template id="target-template">
