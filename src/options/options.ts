@@ -40,12 +40,40 @@ const chartCanvas = document.querySelector<HTMLCanvasElement>('#latency-chart');
 let latestSnapshot: StorageShape | null = null;
 let selectedDate: string | null = null;
 let chartSamples: Sample[] = [];
+let chartFailureSpans: Array<{ start: number; end: number }> = [];
 let chart: Chart | null = null;
 
 const palette = ['#2f9e44', '#1c7ed6', '#f08c00', '#862e9c', '#c92a2a', '#0b7285'];
 
-const networkDividerPlugin: Plugin<'line'> = {
-  id: 'network-divider',
+function isFailedSample(sample: Sample): boolean {
+  return sample.enabledTargetIds.some((targetId) => sample.results[targetId] === null);
+}
+
+const chartEventPlugin: Plugin<'line'> = {
+  id: 'chart-events',
+  beforeDatasetsDraw(c) {
+    const { ctx, chartArea, scales } = c;
+    const xScale = scales.x;
+    if (!xScale) {
+      return;
+    }
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(224, 49, 49, 0.14)';
+
+    for (const span of chartFailureSpans) {
+      const startX = Math.max(chartArea.left, xScale.getPixelForValue(span.start));
+      const endX = Math.min(chartArea.right, xScale.getPixelForValue(span.end));
+      const width = endX - startX;
+      if (width <= 0) {
+        continue;
+      }
+
+      ctx.fillRect(startX, chartArea.top, width, chartArea.bottom - chartArea.top);
+    }
+
+    ctx.restore();
+  },
   afterDatasetsDraw(c) {
     const { ctx, chartArea, scales } = c;
     const xScale = scales.x;
@@ -71,11 +99,30 @@ const networkDividerPlugin: Plugin<'line'> = {
       ctx.stroke();
     }
 
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#e03131';
+    ctx.lineWidth = 2;
+
+    for (const span of chartFailureSpans) {
+      const x = xScale.getPixelForValue(span.start);
+      if (x < chartArea.left || x > chartArea.right) {
+        continue;
+      }
+
+      const y = chartArea.top + 12;
+      ctx.beginPath();
+      ctx.moveTo(x - 4, y - 4);
+      ctx.lineTo(x + 4, y + 4);
+      ctx.moveTo(x + 4, y - 4);
+      ctx.lineTo(x - 4, y + 4);
+      ctx.stroke();
+    }
+
     ctx.restore();
   }
 };
 
-Chart.register(networkDividerPlugin);
+Chart.register(chartEventPlugin);
 
 function setStatus(text: string): void {
   if (statusEl) {
@@ -372,6 +419,26 @@ function renderChart(snapshot: StorageShape): void {
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   chartSamples = snapshot.samples.filter((s) => s.ts >= cutoff).sort((a, b) => a.ts - b.ts);
 
+  chartFailureSpans = [];
+  let activeFailureStart: number | null = null;
+  for (const sample of chartSamples) {
+    const failed = isFailedSample(sample);
+    if (failed && activeFailureStart === null) {
+      activeFailureStart = sample.ts;
+      continue;
+    }
+
+    if (!failed && activeFailureStart !== null) {
+      chartFailureSpans.push({ start: activeFailureStart, end: sample.ts });
+      activeFailureStart = null;
+    }
+  }
+
+  if (activeFailureStart !== null) {
+    const end = chartSamples.length > 0 ? chartSamples[chartSamples.length - 1].ts : activeFailureStart;
+    chartFailureSpans.push({ start: activeFailureStart, end });
+  }
+
   const targets = enabledTargets(snapshot);
   const datasets: ChartDataset<'line'>[] = targets.map((target, idx) => ({
     label: target.label,
@@ -392,6 +459,7 @@ function renderChart(snapshot: StorageShape): void {
     data: { datasets },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       animation: false,
       scales: {
         x: {
@@ -603,3 +671,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 void load();
 void refreshStats();
+
+
+
+
+

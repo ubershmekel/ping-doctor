@@ -20,6 +20,23 @@
       .net-change { border-top: 1px dashed var(--pico-muted-border-color); padding-top: 0.45rem; margin: 0.5rem 0; font-size: 0.85rem; }
       .clickable-day { cursor: pointer; }
       .day-label { font-size: 11px; fill: currentColor; opacity: 0.8; }
+      .chart-frame {
+        width: min(100%, 50vw);
+        height: min(50vh, 420px);
+        min-height: 180px;
+      }
+      #latency-chart {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+        max-height: none;
+      }
+      @media (max-width: 900px) {
+        .chart-frame {
+          width: 100%;
+          height: 220px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -73,7 +90,9 @@
         <button id="check-now" type="button">Check Now</button>
 
         <h4>Last 24h Chart</h4>
-        <canvas id="latency-chart" height="220"></canvas>
+        <div class="chart-frame">
+          <canvas id="latency-chart" height="160"></canvas>
+        </div>
 
         <h4 id="outage-title">Outage Log</h4>
         <div id="outage-log"></div>
@@ -109,4 +128,8 @@
     <script type="module" src="./options.ts"></script>
   </body>
 </html>
+
+
+
+
 
