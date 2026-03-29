@@ -130,7 +130,7 @@ function handleChartEvent(
 
       tip.innerHTML =
         `<strong>Failure</strong><br>` +
-        `${new Date(span.start).toLocaleTimeString()} \u2013 ${new Date(span.end).toLocaleTimeString()}<br>` +
+        `${formatTimestamp(span.start)} \u2013 ${formatTimestamp(span.end)}<br>` +
         `Duration: ${formatDurationMs(duration)}<br>` +
         `Down: ${downTargets.join(', ')}`;
       tip.style.display = 'block';
