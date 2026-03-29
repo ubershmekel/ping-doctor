@@ -2,6 +2,7 @@
   "name": "ping-doctor",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "vite build",
