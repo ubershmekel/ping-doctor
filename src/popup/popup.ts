@@ -1,4 +1,5 @@
 import { probeValue } from '../lib/probe';
+import { formatRecentResultTime, formatTimestamp } from '../lib/time';
 import type { Sample, StorageShape, TargetConfig } from '../types';
 
 const lastCheckEl = document.querySelector<HTMLParagraphElement>('#last-check');
@@ -8,14 +9,6 @@ const openOptionsBtn = document.querySelector<HTMLButtonElement>('#open-options'
 
 function formatTarget(value: string): string {
   return value.replace(/^https?:\/\//, '');
-}
-
-function formatTimestamp(ts: number | null): string {
-  if (!ts) {
-    return 'never';
-  }
-
-  return new Date(ts).toLocaleString();
 }
 
 function enabledTargets(snapshot: StorageShape): TargetConfig[] {
@@ -86,7 +79,7 @@ function renderRecentResults(snapshot: StorageShape): void {
     return;
   }
 
-  const recent = [...snapshot.samples].sort((a, b) => b.ts - a.ts).slice(0, 5);
+  const recent = [...snapshot.samples].sort((a, b) => b.ts - a.ts).slice(0, 10);
   if (recent.length === 0) {
     recentResultsEl.innerHTML = '<p class="dim">No results yet.</p>';
     return;
@@ -95,7 +88,7 @@ function renderRecentResults(snapshot: StorageShape): void {
   recentResultsEl.innerHTML = recent
     .map(
       (sample) =>
-        `<div class="result-row"><span>${new Date(sample.ts).toLocaleTimeString()}</span><span class="result-values">${sampleResultSummary(sample, snapshot)}</span></div>`,
+        `<div class="result-row"><span>${formatRecentResultTime(sample.ts)}</span><span class="result-values">${sampleResultSummary(sample, snapshot)}</span></div>`,
     )
     .join('');
 }

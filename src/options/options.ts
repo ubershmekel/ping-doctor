@@ -13,6 +13,7 @@ import zoomPlugin from 'chartjs-plugin-zoom';
 import { firstFailedTargetId } from '../lib/diagnose';
 import { probeValue } from '../lib/probe';
 import { getSettings, updateSettings } from '../lib/storage';
+import { formatRecentResultTime, formatTimestamp } from '../lib/time';
 import type { Outage, Sample, StorageShape, TargetConfig } from '../types';
 
 Chart.register(
@@ -384,19 +385,11 @@ function renderRecentResults(snapshot: StorageShape): void {
       const cells = targets
         .map((t) => `<td>${formatLatency(probeValue(sample, t.id), t.id)}</td>`)
         .join('');
-      return `<tr><td>${new Date(sample.ts).toLocaleTimeString()}</td>${cells}</tr>`;
+      return `<tr><td>${formatRecentResultTime(sample.ts)}</td>${cells}</tr>`;
     })
     .join('');
 
-  recentResultsEl.innerHTML = `<table class="results-table"><thead><tr><th>Time</th>${headerCells}</tr></thead><tbody>${rows}</tbody></table>`;
-}
-
-function formatTimestamp(ts: number | null): string {
-  if (!ts) {
-    return 'never';
-  }
-
-  return new Date(ts).toLocaleString();
+  recentResultsEl.innerHTML = `<table class="results-table"><thead><tr><th>When</th>${headerCells}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function formatDurationMs(ms: number): string {
