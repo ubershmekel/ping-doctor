@@ -1,21 +1,65 @@
 # PingDoctor
 
-PingDoctor is a Chrome extension that continuously probes configurable network
-targets and tracks outages, latency, and uptime trends.
+PingDoctor exists for the moment when your internet starts acting up and you
+need an answer:
 
-## Features
+Is it my Wi-Fi?
+Is it my router?
+Is it my ISP?
+Or is the wider internet having a bad moment?
 
-- Background checks on a configurable interval (`15s`, `30s`, or `60s`)
-- Fully user-defined targets (label, address/URL, enabled/disabled)
-- Works with any number of active targets
-- Outage log, 24h latency chart, and 7-day heatmap
-- Export diagnostics as JSON
+PingDoctor gives you a way to watch a few useful checkpoints, such as
+your local router and a known internet endpoint, so you can quickly see where
+the failure is happening.
+
+It is meant to answer two practical questions:
+
+- What is broken right now?
+- Has my connection been unstable over the last day or week?
+
+The extension keeps lightweight HTTP(S) checks running in the background and
+turns them into a current-status view plus history.
+
+## What It Shows
+
+- Whether your configured targets are responding right now
+- Recent failures and slow responses
+- A 24-hour latency view
+- A 7-day health heatmap
+- Exportable diagnostics if you want raw data
+
+## How To Think About The Targets
+
+The default setup is meant to separate local problems from broader internet
+problems:
+
+- `Wi-Fi Router`: helps answer whether your network card, or wifi router is working.
+- `Internet Check`: helps answer whether your internet service provider is failing.
+
+If both fail, the problem is likely local to your network.
+If the router is fine but the internet target fails, the problem is more likely
+upstream.
+
+This is not a perfect network analyzer, but it is good at providing fast,
+practical signal when your connection feels unreliable.
+
+## Important Constraint
+
+PingDoctor does not use ICMP ping. A target only works if it accepts HTTP or
+HTTPS requests from the browser extension.
 
 Default target set:
 
-1. `Wifi Router` -> `192.168.1.1`
-2. `Internet Modem` -> `8.8.8.8`
-3. `Internet Site` -> `connectivitycheck.gstatic.com/generate_204`
+1. `Wi-Fi Router` -> `192.168.1.1`
+2. `Internet Check` -> `https://connectivitycheck.gstatic.com/generate_204`
+
+## Choosing Good Targets
+
+Use targets that respond over HTTP or HTTPS.
+
+- Good local target: your router web UI or gateway IP, such as `192.168.1.1`
+- Good internet target: a stable URL such as `https://connectivitycheck.gstatic.com/generate_204`
+- Bad default: `8.8.8.8` by itself. That is a DNS resolver IP, not a general-purpose web endpoint. It doesn't respond at http://8.8.8.8
 
 ## Router IP Tips
 

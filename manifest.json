@@ -1,8 +1,8 @@
-﻿{
+{
   "manifest_version": 3,
   "name": "PingDoctor",
   "version": "1.0.0",
-  "description": "Network diagnostics - know if it's your WiFi, your ISP, or the internet.",
+  "description": "Monitor your router and selected HTTP endpoints to spot outages and slowdowns.",
   "permissions": ["storage", "alarms"],
   "host_permissions": ["<all_urls>"],
   "background": {
@@ -20,3 +20,4 @@
     "128": "icons/icon128.png"
   }
 }
+

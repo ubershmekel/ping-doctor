@@ -96,7 +96,7 @@ function renderRecentResults(snapshot: StorageShape): void {
 function render(snapshot: StorageShape): void {
   targetAverages = computeTargetAverages(snapshot);
   if (lastCheckEl) {
-    lastCheckEl.textContent = `Last checkup: ${formatTimestamp(snapshot.state.lastCheckedAt)}`;
+    lastCheckEl.textContent = `Last check: ${formatTimestamp(snapshot.state.lastCheckedAt)}`;
   }
 
   renderAddresses(snapshot);
@@ -130,3 +130,4 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 void refresh();
+

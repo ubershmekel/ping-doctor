@@ -162,7 +162,7 @@
           <h3>Stats and History</h3>
           <span id="status-pill" class="status-pill pill-healthy">Healthy</span>
         </div>
-        <p class="dim" id="last-check">Last checkup: never</p>
+        <p class="dim" id="last-check">Last check: never</p>
 
         <h4>Current Status</h4>
         <div id="current-status"></div>
@@ -185,7 +185,7 @@
       </section>
 
       <form id="settings-form">
-        <h4>Ping Targets</h4>
+        <h4>Probe Targets</h4>
 
         <button
           id="toggle-targets"
@@ -194,9 +194,13 @@
           aria-expanded="false"
           aria-controls="targets-editor"
         >
-          Edit Ping Targets
+          Edit Targets
         </button>
         <div id="targets-editor" hidden>
+          <p class="dim">
+            Use a router IP or an HTTP/HTTPS endpoint. Public DNS IPs like
+            <code>8.8.8.8</code> usually are not valid web targets.
+          </p>
           <button type="submit">Save</button>
           <label>
             Poll Interval (seconds)
@@ -230,7 +234,7 @@
         </label>
         <label>
           Address or URL
-          <input data-field="address" type="text" placeholder="8.8.8.8" />
+          <input data-field="address" type="text" placeholder="https://example.com/health" />
         </label>
         <input data-field="id" type="hidden" />
       </article>

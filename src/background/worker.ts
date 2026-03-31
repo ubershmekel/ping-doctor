@@ -14,7 +14,7 @@ import {
 
 const ALARM_NAME = 'pingdoctor-poll';
 
-function minutesForPoll(seconds: 15 | 30 | 60): number {
+function minutesForPoll(seconds: number): number {
   return seconds / 60;
 }
 
@@ -152,3 +152,4 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   return false;
 });
+

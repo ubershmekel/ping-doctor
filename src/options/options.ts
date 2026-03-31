@@ -332,11 +332,11 @@ function statusFromSample(
   snapshot: StorageShape,
 ): { pill: string; text: string; sentence: string } {
   if (!sample) {
-    return { pill: 'pill-degraded', text: 'Diagnosing', sentence: 'Diagnosing...' };
+    return { pill: 'pill-degraded', text: 'Waiting', sentence: 'Waiting for first check...' };
   }
 
   if (isHealthySample(sample)) {
-    return { pill: 'pill-healthy', text: 'Healthy', sentence: 'All enabled targets are healthy' };
+    return { pill: 'pill-healthy', text: 'Healthy', sentence: 'All enabled targets responded' };
   }
 
   const firstDown = firstFailedTargetId(sample);
@@ -345,7 +345,7 @@ function statusFromSample(
   return {
     pill: 'pill-degraded',
     text: 'Degraded',
-    sentence: `${label} is unreachable`,
+    sentence: `${label} did not respond`,
   };
 }
 
@@ -598,7 +598,7 @@ function renderHeatmap(snapshot: StorageShape): void {
     } else {
       const lines = Object.entries(stats).map(([id, t]) => {
         const name = labelMap.get(id) ?? id;
-        return `${name}: ${t.total} pings, ${t.failed} failed (${t.uptimePct.toFixed(1)}%)`;
+        return `${name}: ${t.total} checks, ${t.failed} failed (${t.uptimePct.toFixed(1)}%)`;
       });
       detail.textContent = `${date}\n${lines.join('\n')}`;
     }
@@ -728,7 +728,7 @@ function renderCurrent(snapshot: StorageShape): void {
   }
 
   if (lastCheckEl) {
-    lastCheckEl.textContent = `Last checkup: ${formatTimestamp(snapshot.state.lastCheckedAt)}`;
+    lastCheckEl.textContent = `Last check: ${formatTimestamp(snapshot.state.lastCheckedAt)}`;
   }
 
   if (currentStatusEl) {
@@ -842,7 +842,7 @@ checkNowButton?.addEventListener('click', async () => {
   }
 
   checkNowButton.disabled = true;
-  checkNowButton.textContent = 'Diagnosing...';
+  checkNowButton.textContent = 'Checking...';
 
   try {
     const response = await chrome.runtime.sendMessage({ type: 'check-now' });
@@ -898,3 +898,5 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 void load();
 void refreshStats();
+
+

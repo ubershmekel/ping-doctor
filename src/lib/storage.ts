@@ -23,14 +23,14 @@ export const DEFAULT_SETTINGS: Settings = {
   targets: [
     {
       id: 'router',
-      label: 'Wifi Router',
+      label: 'Wi-Fi Router',
       address: '192.168.1.1',
       enabled: true,
     },
     {
       id: 'site',
-      label: 'Internet Site',
-      address: 'connectivitycheck.gstatic.com/generate_204',
+      label: 'Internet Check',
+      address: 'https://connectivitycheck.gstatic.com/generate_204',
       enabled: true,
     },
   ],
@@ -554,3 +554,4 @@ export async function exportData(): Promise<StorageShape> {
   ]);
   return toSnapshot(meta, samples, outages);
 }
+

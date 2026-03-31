@@ -31,10 +31,38 @@ async function timedFetch(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<
   }
 }
 
-function toUrl(address: string): string {
-  return address.startsWith('http://') || address.startsWith('https://')
-    ? address
-    : `http://${address}`;
+function isIpv4Address(value: string): boolean {
+  const parts = value.split('.');
+  if (parts.length !== 4) {
+    return false;
+  }
+
+  return parts.every((part) => /^\d+$/.test(part) && Number(part) >= 0 && Number(part) <= 255);
+}
+
+function isPrivateIpv4Address(value: string): boolean {
+  if (!isIpv4Address(value)) {
+    return false;
+  }
+
+  const [first, second] = value.split('.').map(Number);
+  return (
+    first === 10 ||
+    first === 127 ||
+    (first === 192 && second === 168) ||
+    (first === 172 && second >= 16 && second <= 31)
+  );
+}
+
+export function normalizeProbeAddress(address: string): string {
+  const trimmed = address.trim();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+
+  return isPrivateIpv4Address(trimmed) || trimmed === 'localhost'
+    ? `http://${trimmed}`
+    : `https://${trimmed}`;
 }
 
 export async function probeAll(
@@ -44,7 +72,8 @@ export async function probeAll(
   const enabledTargets = settings.targets.filter((target) => target.enabled);
   const entries = await Promise.all(
     enabledTargets.map(
-      async (target) => [target.id, await timedFetch(toUrl(target.address), timeoutMs)] as const,
+      async (target) =>
+        [target.id, await timedFetch(normalizeProbeAddress(target.address), timeoutMs)] as const,
     ),
   );
 
