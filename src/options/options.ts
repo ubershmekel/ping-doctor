@@ -420,8 +420,17 @@ function describeAffected(outage: Outage, snapshot: StorageShape): string {
   return outage.affectedTargetIds.map((id) => labelMap.get(id) ?? id).join(', ');
 }
 
-function mergeLogItems(snapshot: StorageShape): Array<{ ts: number; html: string }> {
-  const entries: Array<{ ts: number; html: string }> = [];
+type LogItem = {
+  ts: number;
+  endTs: number;
+  durationMs: number;
+  primaryLabel: string;
+  type: 'outage' | 'netchange';
+  html: string;
+};
+
+function mergeLogItems(snapshot: StorageShape): LogItem[] {
+  const entries: LogItem[] = [];
   const labelMap = targetLabelById(snapshot);
 
   const outages = [...snapshot.outages];
@@ -442,7 +451,11 @@ function mergeLogItems(snapshot: StorageShape): Array<{ ts: number; html: string
 
     entries.push({
       ts: outage.start,
-      html: `<div class="outage-item"><strong>${new Date(outage.start).toLocaleString()} - ${outage.end ? new Date(outage.end).toLocaleString() : 'ongoing'}</strong> (${formatDurationMs(end - outage.start)}) on ${primaryLabel}<br /><span class="dim">Affected: ${describeAffected(outage, snapshot)}</span></div>`,
+      endTs: end,
+      durationMs: end - outage.start,
+      primaryLabel,
+      type: 'outage',
+      html: `<div class="outage-item"><strong>${new Date(outage.start).toLocaleString()} – ${outage.end ? new Date(outage.end).toLocaleTimeString() : 'ongoing'}</strong> (${formatDurationMs(end - outage.start)}) on ${primaryLabel}<br /><span class="dim">Affected: ${describeAffected(outage, snapshot)}</span></div>`,
     });
   }
 
@@ -458,11 +471,69 @@ function mergeLogItems(snapshot: StorageShape): Array<{ ts: number; html: string
 
     entries.push({
       ts: sample.ts,
-      html: `<div class="net-change">Network change detected - monitoring resumed (${new Date(sample.ts).toLocaleString()})</div>`,
+      endTs: sample.ts,
+      durationMs: 0,
+      primaryLabel: '',
+      type: 'netchange',
+      html: `<div class="net-change">Network change detected – monitoring resumed (${new Date(sample.ts).toLocaleString()})</div>`,
     });
   }
 
   return entries.sort((a, b) => b.ts - a.ts);
+}
+
+function hourKey(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}`;
+}
+
+function groupLogItems(items: LogItem[], snapshot: StorageShape): string[] {
+  if (items.length === 0) return [];
+
+  const buckets = new Map<string, LogItem[]>();
+  for (const item of items) {
+    const key = hourKey(item.ts);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(item);
+  }
+
+  // Sort buckets newest first
+  const sorted = [...buckets.values()].sort((a, b) => b[0].ts - a[0].ts);
+  const labelMap = targetLabelById(snapshot);
+
+  return sorted.map((group) => {
+    group.sort((a, b) => b.ts - a.ts);
+    const spanStart = group[group.length - 1].ts;
+    const spanEnd = group[0].endTs;
+
+    // Count failed pings per target from raw samples within this hour's span
+    const failedByTarget = new Map<string, number>();
+    for (const sample of snapshot.samples) {
+      if (sample.ts < spanStart || sample.ts > spanEnd) continue;
+      for (const [targetId, result] of Object.entries(sample.results)) {
+        if (result === null) {
+          failedByTarget.set(targetId, (failedByTarget.get(targetId) ?? 0) + 1);
+        }
+      }
+    }
+
+    const failedParts = [...failedByTarget.entries()].map(
+      ([id, count]) => `${labelMap.get(id) ?? id}: ${count} failed`,
+    );
+
+    const hourLabel = new Date(spanStart).toLocaleString([], {
+      month: 'numeric',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+    });
+
+    const summaryText =
+      failedParts.length > 0 ? `${hourLabel} — ${failedParts.join(' · ')}` : hourLabel;
+
+    const inner = group.map((i) => i.html).join('');
+    return `<details class="outage-group"><summary>${summaryText}</summary><div class="outage-group-items">${inner}</div></details>`;
+  });
 }
 
 function calculateDayUptime(date: string, snapshot: StorageShape): number {
@@ -714,28 +785,30 @@ function renderOutages(snapshot: StorageShape): void {
   }
 
   outageTitleEl.textContent = selectedDate ? `Outage Log (${selectedDate})` : 'Outage Log';
-  const rows = mergeLogItems(snapshot);
+  const grouped = groupLogItems(mergeLogItems(snapshot), snapshot);
 
-  if (rows.length === 0) {
+  if (grouped.length === 0) {
     outageLogEl.innerHTML = '<p class="dim">No recent outages.</p>';
     return;
   }
 
-  const totalPages = Math.ceil(rows.length / OUTAGE_PAGE_SIZE);
+  const totalPages = Math.ceil(grouped.length / OUTAGE_PAGE_SIZE);
   outageLogPage = Math.min(outageLogPage, totalPages - 1);
-  const start = outageLogPage * OUTAGE_PAGE_SIZE;
-  const pageRows = rows.slice(start, start + OUTAGE_PAGE_SIZE);
+  const page = grouped.slice(
+    outageLogPage * OUTAGE_PAGE_SIZE,
+    (outageLogPage + 1) * OUTAGE_PAGE_SIZE,
+  );
 
   const pagination =
     totalPages > 1
       ? `<div class="outage-pagination">
-          <button id="outage-prev" ${outageLogPage === 0 ? 'disabled' : ''}>&#8592; Prev</button>
+          <button id="outage-prev" ${outageLogPage === 0 ? 'disabled' : ''}>&larr; Prev</button>
           <span class="dim">Page ${outageLogPage + 1} of ${totalPages}</span>
-          <button id="outage-next" ${outageLogPage >= totalPages - 1 ? 'disabled' : ''}>Next &#8594;</button>
+          <button id="outage-next" ${outageLogPage >= totalPages - 1 ? 'disabled' : ''}>Next &rarr;</button>
         </div>`
       : '';
 
-  outageLogEl.innerHTML = pageRows.map((r) => r.html).join('') + pagination;
+  outageLogEl.innerHTML = page.join('') + pagination;
 
   outageLogEl.querySelector('#outage-prev')?.addEventListener('click', () => {
     outageLogPage--;
