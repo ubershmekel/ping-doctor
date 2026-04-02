@@ -554,4 +554,3 @@ export async function exportData(): Promise<StorageShape> {
   ]);
   return toSnapshot(meta, samples, outages);
 }
-

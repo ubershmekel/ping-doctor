@@ -49,6 +49,8 @@ const chartCanvas = document.querySelector<HTMLCanvasElement>('#latency-chart');
 
 let latestSnapshot: StorageShape | null = null;
 let selectedDate: string | null = null;
+let outageLogPage = 0;
+const OUTAGE_PAGE_SIZE = 10;
 let chartSamples: Sample[] = [];
 let chartFailureSpans: Array<{ start: number; end: number }> = [];
 let chart: Chart | null = null;
@@ -577,6 +579,7 @@ function renderHeatmap(snapshot: StorageShape): void {
     rect.setAttribute('class', 'clickable-day');
     rect.addEventListener('click', () => {
       selectedDate = selectedDate === date ? null : date;
+      outageLogPage = 0;
       renderAllStats(snapshot);
     });
 
@@ -712,9 +715,36 @@ function renderOutages(snapshot: StorageShape): void {
 
   outageTitleEl.textContent = selectedDate ? `Outage Log (${selectedDate})` : 'Outage Log';
   const rows = mergeLogItems(snapshot);
-  outageLogEl.innerHTML = rows.length
-    ? rows.map((r) => r.html).join('')
-    : '<p class="dim">No recent outages.</p>';
+
+  if (rows.length === 0) {
+    outageLogEl.innerHTML = '<p class="dim">No recent outages.</p>';
+    return;
+  }
+
+  const totalPages = Math.ceil(rows.length / OUTAGE_PAGE_SIZE);
+  outageLogPage = Math.min(outageLogPage, totalPages - 1);
+  const start = outageLogPage * OUTAGE_PAGE_SIZE;
+  const pageRows = rows.slice(start, start + OUTAGE_PAGE_SIZE);
+
+  const pagination =
+    totalPages > 1
+      ? `<div class="outage-pagination">
+          <button id="outage-prev" ${outageLogPage === 0 ? 'disabled' : ''}>&#8592; Prev</button>
+          <span class="dim">Page ${outageLogPage + 1} of ${totalPages}</span>
+          <button id="outage-next" ${outageLogPage >= totalPages - 1 ? 'disabled' : ''}>Next &#8594;</button>
+        </div>`
+      : '';
+
+  outageLogEl.innerHTML = pageRows.map((r) => r.html).join('') + pagination;
+
+  outageLogEl.querySelector('#outage-prev')?.addEventListener('click', () => {
+    outageLogPage--;
+    renderOutages(snapshot);
+  });
+  outageLogEl.querySelector('#outage-next')?.addEventListener('click', () => {
+    outageLogPage++;
+    renderOutages(snapshot);
+  });
 }
 
 function renderCurrent(snapshot: StorageShape): void {
@@ -898,5 +928,3 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 void load();
 void refreshStats();
-
-

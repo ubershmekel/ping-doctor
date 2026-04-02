@@ -130,4 +130,3 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 void refresh();
-
