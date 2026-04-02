@@ -124,6 +124,11 @@ npm test
 3. Click **Load unpacked**
 4. Select `dist/` (recommended)
 
+## Docs
+
+- [Publishing guide](./docs/publishing.md)
+- [Privacy policy](./docs/privacy-policy.md)
+
 ## Settings Behavior
 
 In the options page you can configure each target independently:
