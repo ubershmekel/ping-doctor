@@ -118,6 +118,9 @@
         font-size: 0.85rem;
         cursor: pointer;
       }
+      .heatmap-controls {
+        margin-bottom: 0.6rem;
+      }
       .outage-group {
         border-left: 3px solid var(--pico-muted-border-color);
         padding-left: 0.6rem;
@@ -208,8 +211,13 @@
         <div id="outage-log"></div>
 
         <h4>Weekly Health Heatmap</h4>
+        <div class="outage-pagination heatmap-controls">
+          <button id="heatmap-prev" type="button" disabled>&larr; Prev</button>
+          <span id="heatmap-page" class="dim">Page 1 of 1</span>
+          <button id="heatmap-next" type="button" disabled>Next &rarr;</button>
+        </div>
         <svg id="heatmap" width="760" height="100" viewBox="0 0 760 100"></svg>
-        <p class="dim">Click a day to filter outage log.</p>
+        <p class="dim">Click a day to filter outage log. Hover a day for the daily summary.</p>
       </section>
 
       <form id="settings-form">

@@ -45,12 +45,17 @@ const lastCheckEl = document.querySelector<HTMLParagraphElement>('#last-check');
 const outageLogEl = document.querySelector<HTMLDivElement>('#outage-log');
 const outageTitleEl = document.querySelector<HTMLHeadingElement>('#outage-title');
 const heatmapEl = document.querySelector<SVGSVGElement>('#heatmap');
+const heatmapPrevBtn = document.querySelector<HTMLButtonElement>('#heatmap-prev');
+const heatmapNextBtn = document.querySelector<HTMLButtonElement>('#heatmap-next');
+const heatmapPageEl = document.querySelector<HTMLSpanElement>('#heatmap-page');
 const chartCanvas = document.querySelector<HTMLCanvasElement>('#latency-chart');
 
 let latestSnapshot: StorageShape | null = null;
 let selectedDate: string | null = null;
 let outageLogPage = 0;
+let heatmapPage = 0;
 const OUTAGE_PAGE_SIZE = 10;
+const HEATMAP_PAGE_SIZE = 7;
 let chartSamples: Sample[] = [];
 let chartFailureSpans: Array<{ start: number; end: number }> = [];
 let chart: Chart | null = null;
@@ -411,6 +416,64 @@ function dayString(ts: number): string {
   return `${y}-${m}-${day}`;
 }
 
+function shiftDay(date: string, offset: number): string {
+  const [year, month, day] = date.split('-').map(Number);
+  const next = new Date(year, month - 1, day + offset);
+  next.setHours(0, 0, 0, 0);
+  return dayString(next.getTime());
+}
+
+function formatDayRange(start: string, end: string): string {
+  return start === end ? start : `${start} - ${end}`;
+}
+
+function formatDailyAverageLatency(
+  avgLatency: number,
+  totalChecks: number,
+  failedChecks: number,
+): string {
+  if (totalChecks - failedChecks <= 0) {
+    return 'n/a';
+  }
+
+  return `${avgLatency}ms`;
+}
+
+function heatmapDays(snapshot: StorageShape): string[] {
+  const today = dayString(Date.now());
+  const knownDays = new Set<string>([today]);
+
+  for (const summary of snapshot.daySummaries) {
+    knownDays.add(summary.date);
+  }
+
+  for (const sample of snapshot.samples) {
+    knownDays.add(dayString(sample.ts));
+  }
+
+  const sortedDays = [...knownDays].sort();
+  const firstDay = sortedDays[0] ?? today;
+  const days: string[] = [];
+  let current = firstDay;
+
+  while (current <= today) {
+    days.push(current);
+    current = shiftDay(current, 1);
+  }
+
+  return days;
+}
+
+function visibleHeatmapDays(snapshot: StorageShape): { days: string[]; totalPages: number } {
+  const days = heatmapDays(snapshot);
+  const totalPages = Math.max(1, Math.ceil(days.length / HEATMAP_PAGE_SIZE));
+  heatmapPage = Math.min(heatmapPage, totalPages - 1);
+
+  const end = days.length - heatmapPage * HEATMAP_PAGE_SIZE;
+  const start = Math.max(0, end - HEATMAP_PAGE_SIZE);
+  return { days: days.slice(start, end).reverse(), totalPages };
+}
+
 function describeAffected(outage: Outage, snapshot: StorageShape): string {
   const labelMap = targetLabelById(snapshot);
   if (outage.affectedTargetIds.length === 0) {
@@ -619,13 +682,18 @@ function renderHeatmap(snapshot: StorageShape): void {
     return;
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const { days, totalPages } = visibleHeatmapDays(snapshot);
+  const rangeLabel =
+    days.length > 0 ? formatDayRange(days[days.length - 1], days[0]) : dayString(Date.now());
 
-  const days: string[] = [];
-  for (let i = 6; i >= 0; i -= 1) {
-    const d = new Date(today.getTime() - i * 86400000);
-    days.push(dayString(d.getTime()));
+  if (heatmapPrevBtn) {
+    heatmapPrevBtn.disabled = heatmapPage === 0;
+  }
+  if (heatmapNextBtn) {
+    heatmapNextBtn.disabled = heatmapPage >= totalPages - 1;
+  }
+  if (heatmapPageEl) {
+    heatmapPageEl.textContent = `${rangeLabel} · Page ${heatmapPage + 1} of ${totalPages}`;
   }
 
   const cellW = 90;
@@ -647,6 +715,8 @@ function renderHeatmap(snapshot: StorageShape): void {
     rect.setAttribute('height', String(cellH));
     rect.setAttribute('rx', '4');
     rect.setAttribute('fill', colorForUptime(uptime));
+    rect.setAttribute('stroke', selectedDate === date ? 'currentColor' : 'transparent');
+    rect.setAttribute('stroke-width', selectedDate === date ? '2' : '0');
     rect.setAttribute('class', 'clickable-day');
     rect.addEventListener('click', () => {
       selectedDate = selectedDate === date ? null : date;
@@ -672,7 +742,7 @@ function renderHeatmap(snapshot: StorageShape): void {
     } else {
       const lines = Object.entries(stats).map(([id, t]) => {
         const name = labelMap.get(id) ?? id;
-        return `${name}: ${t.total} checks, ${t.failed} failed (${t.uptimePct.toFixed(1)}%)`;
+        return `${name}: ${t.total} checks, ${t.failed} failed (${t.uptimePct.toFixed(1)}%), avg ${formatDailyAverageLatency(t.avgLatency, t.total, t.failed)}`;
       });
       detail.textContent = `${date}\n${lines.join('\n')}`;
     }
@@ -870,6 +940,24 @@ async function refreshStats(): Promise<void> {
   latestSnapshot = await fetchSnapshot();
   renderAllStats(latestSnapshot);
 }
+
+heatmapPrevBtn?.addEventListener('click', () => {
+  if (!latestSnapshot || heatmapPage === 0) {
+    return;
+  }
+
+  heatmapPage -= 1;
+  renderHeatmap(latestSnapshot);
+});
+
+heatmapNextBtn?.addEventListener('click', () => {
+  if (!latestSnapshot) {
+    return;
+  }
+
+  heatmapPage += 1;
+  renderHeatmap(latestSnapshot);
+});
 
 async function load(): Promise<void> {
   const settings = await getSettings();
