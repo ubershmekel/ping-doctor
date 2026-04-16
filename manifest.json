@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PingDoctor",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Monitor your router and selected HTTP endpoints to spot outages and slowdowns.",
   "permissions": [
     "storage",
