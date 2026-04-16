@@ -36,9 +36,17 @@ function bumpVersion(version: string, type: BumpType): string {
   return `${major}.${minor}.${patch + 1}`;
 }
 
+// Ensure clean working tree
+const gitStatus = execSync('git status --porcelain', { cwd: rootDir }).toString().trim();
+if (gitStatus) {
+  console.error('Working tree is not clean. Commit or stash changes before releasing:\n' + gitStatus);
+  process.exit(1);
+}
+
 // Run tests first
 console.log('Running tests...');
 execSync('npm test', { stdio: 'inherit', cwd: rootDir });
+execSync('npm run test:typecheck', { stdio: 'inherit', cwd: rootDir });
 console.log('Tests passed.');
 
 // Bump manifest.json

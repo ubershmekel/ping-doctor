@@ -835,7 +835,7 @@ function renderHeatmap(snapshot: StorageShape): void {
     const detail = document.createElementNS('http://www.w3.org/2000/svg', 'title');
     if (noData) {
       detail.textContent = `${date}: No data collected`;
-    } else {
+    } else if (stats) {
       const lines = Object.entries(stats.targets).map(([id, t]) => {
         const name = labelMap.get(id) ?? id;
         return `${name}: ${t.total} checks, ${t.failed} failed (${t.uptimePct.toFixed(1)}%), avg ${formatDailyAverageLatency(t.avgLatency, t.total, t.failed)}`;
