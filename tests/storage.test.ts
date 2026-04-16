@@ -14,9 +14,9 @@ describe('storage lifecycle', () => {
           get: async (key: string) => ({ [key]: state[key] }),
           set: async (value: Record<string, unknown>) => {
             Object.assign(state, value);
-          }
-        }
-      }
+          },
+        },
+      },
     };
   });
 
@@ -25,12 +25,12 @@ describe('storage lifecycle', () => {
     await recordSample(
       { ts: now, enabledTargetIds: ['router'], results: { router: null } },
       'target',
-      'router'
+      'router',
     );
     await recordSample(
       { ts: now + 1, enabledTargetIds: ['router'], results: { router: 8 } },
       'unknown',
-      null
+      null,
     );
 
     const snapshot = await getStorageSnapshot();
@@ -42,18 +42,14 @@ describe('storage lifecycle', () => {
 
   it('rolls old samples into day summaries and trims raw sample retention', async () => {
     const now = Date.now();
-    const eightDaysAgo = now - 8 * 24 * 60 * 60 * 1000;
+    const threeDaysAgo = now - 3 * 24 * 60 * 60 * 1000;
 
     await recordSample(
-      { ts: eightDaysAgo, enabledTargetIds: ['a'], results: { a: 10 } },
+      { ts: threeDaysAgo, enabledTargetIds: ['a'], results: { a: 10 } },
       'unknown',
-      null
+      null,
     );
-    await recordSample(
-      { ts: now, enabledTargetIds: ['a'], results: { a: 12 } },
-      'unknown',
-      null
-    );
+    await recordSample({ ts: now, enabledTargetIds: ['a'], results: { a: 12 } }, 'unknown', null);
 
     await runRollup(now);
 
@@ -62,5 +58,40 @@ describe('storage lifecycle', () => {
     expect(snapshot.samples).toHaveLength(1);
     expect(snapshot.samples[0].ts).toBe(now);
   });
-});
 
+  it('merges partial raw retention rollups into the same day summary', async () => {
+    const firstSample = new Date(2026, 0, 2, 10).getTime();
+    const secondSample = new Date(2026, 0, 2, 13).getTime();
+    const firstRollup = new Date(2026, 0, 4, 12).getTime();
+    const secondRollup = new Date(2026, 0, 5, 14).getTime();
+
+    await recordSample(
+      { ts: firstSample, enabledTargetIds: ['a'], results: { a: 10 } },
+      'unknown',
+      null,
+    );
+    await recordSample(
+      { ts: secondSample, enabledTargetIds: ['a'], results: { a: 30 } },
+      'unknown',
+      null,
+    );
+
+    await runRollup(firstRollup);
+
+    let stored = state.pingdoctor as { samples: Array<{ ts: number }> };
+    expect(stored.samples.map((s) => s.ts)).toEqual([secondSample]);
+
+    await runRollup(secondRollup);
+
+    stored = state.pingdoctor as { samples: Array<{ ts: number }> };
+    expect(stored.samples).toHaveLength(0);
+
+    const snapshot = await getStorageSnapshot();
+    expect(snapshot.samples).toHaveLength(0);
+
+    const summary = snapshot.daySummaries.find((s) => s.date === '2026-01-02');
+    expect(summary?.targets.a.totalPings).toBe(2);
+    expect(summary?.targets.a.failedPings).toBe(0);
+    expect(summary?.targets.a.avgLatency).toBe(20);
+  });
+});

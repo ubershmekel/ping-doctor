@@ -65,6 +65,32 @@ const palette = ['#2f9e44', '#1c7ed6', '#f08c00', '#862e9c', '#c92a2a', '#0b7285
 let targetAverages: Map<string, number> = new Map();
 let failureTooltipEl: HTMLDivElement | null = null;
 
+type TargetStats = {
+  total: number;
+  failed: number;
+  uptimePct: number;
+  avgLatency: number;
+};
+
+type HeatmapDayStats = {
+  uptime: number;
+  targets: Record<string, TargetStats>;
+};
+
+type HeatmapData = {
+  days: string[];
+  statsByDate: Map<string, HeatmapDayStats>;
+};
+
+type RawDayStats = {
+  totalSamples: number;
+  healthySamples: number;
+  targets: Map<
+    string,
+    { total: number; failed: number; latencyTotal: number; latencyCount: number }
+  >;
+};
+
 function isFailedSample(sample: Sample): boolean {
   return sample.enabledTargetIds.some((targetId) => sample.results[targetId] === null);
 }
@@ -439,16 +465,155 @@ function formatDailyAverageLatency(
   return `${avgLatency}ms`;
 }
 
-function heatmapDays(snapshot: StorageShape): string[] {
+function statsFromSummaryTargets(summary: StorageShape['daySummaries'][number]): HeatmapDayStats {
+  const targets: Record<string, TargetStats> = {};
+  for (const [id, t] of Object.entries(summary.targets)) {
+    targets[id] = {
+      total: t.totalPings,
+      failed: t.failedPings,
+      uptimePct: t.uptimePct,
+      avgLatency: t.avgLatency,
+    };
+  }
+
+  const entries = Object.values(targets);
+  return {
+    uptime: entries.length === 0 ? -1 : Math.min(...entries.map((t) => t.uptimePct)),
+    targets,
+  };
+}
+
+function createRawDayStats(): RawDayStats {
+  return {
+    totalSamples: 0,
+    healthySamples: 0,
+    targets: new Map(),
+  };
+}
+
+function appendRawSampleStats(stats: RawDayStats, sample: Sample): void {
+  stats.totalSamples += 1;
+  if (isHealthySample(sample)) {
+    stats.healthySamples += 1;
+  }
+
+  for (const id of sample.enabledTargetIds) {
+    const target = stats.targets.get(id) ?? {
+      total: 0,
+      failed: 0,
+      latencyTotal: 0,
+      latencyCount: 0,
+    };
+    const value = sample.results[id];
+
+    target.total += 1;
+    if (value === null) {
+      target.failed += 1;
+    } else if (typeof value === 'number') {
+      target.latencyTotal += value;
+      target.latencyCount += 1;
+    }
+
+    stats.targets.set(id, target);
+  }
+}
+
+function finalizeRawDayStats(stats: RawDayStats): HeatmapDayStats {
+  const targets: Record<string, TargetStats> = {};
+  for (const [id, target] of stats.targets) {
+    targets[id] = {
+      total: target.total,
+      failed: target.failed,
+      uptimePct:
+        target.total === 0
+          ? -1
+          : Number((((target.total - target.failed) / target.total) * 100).toFixed(2)),
+      avgLatency:
+        target.latencyCount > 0
+          ? Number((target.latencyTotal / target.latencyCount).toFixed(1))
+          : 0,
+    };
+  }
+
+  return {
+    uptime:
+      stats.totalSamples === 0
+        ? -1
+        : Number(((stats.healthySamples / stats.totalSamples) * 100).toFixed(2)),
+    targets,
+  };
+}
+
+function mergeTargetStats(current: TargetStats | undefined, next: TargetStats): TargetStats {
+  if (!current) {
+    return next;
+  }
+
+  const total = current.total + next.total;
+  const failed = current.failed + next.failed;
+  const currentSuccesses = current.total - current.failed;
+  const nextSuccesses = next.total - next.failed;
+  const successes = currentSuccesses + nextSuccesses;
+
+  return {
+    total,
+    failed,
+    uptimePct: total === 0 ? -1 : Number((((total - failed) / total) * 100).toFixed(2)),
+    avgLatency:
+      successes > 0
+        ? Number(
+            (
+              (current.avgLatency * currentSuccesses + next.avgLatency * nextSuccesses) /
+              successes
+            ).toFixed(1),
+          )
+        : 0,
+  };
+}
+
+function mergeHeatmapDayStats(
+  current: HeatmapDayStats | undefined,
+  next: HeatmapDayStats,
+): HeatmapDayStats {
+  if (!current) {
+    return next;
+  }
+
+  const targets = { ...current.targets };
+  for (const [id, target] of Object.entries(next.targets)) {
+    targets[id] = mergeTargetStats(targets[id], target);
+  }
+
+  const entries = Object.values(targets);
+  return {
+    uptime: entries.length === 0 ? -1 : Math.min(...entries.map((t) => t.uptimePct)),
+    targets,
+  };
+}
+
+function buildHeatmapData(snapshot: StorageShape): HeatmapData {
   const today = dayString(Date.now());
   const knownDays = new Set<string>([today]);
+  const statsByDate = new Map<string, HeatmapDayStats>();
 
   for (const summary of snapshot.daySummaries) {
     knownDays.add(summary.date);
+    statsByDate.set(summary.date, statsFromSummaryTargets(summary));
   }
 
+  const rawStatsByDate = new Map<string, RawDayStats>();
   for (const sample of snapshot.samples) {
-    knownDays.add(dayString(sample.ts));
+    const date = dayString(sample.ts);
+    knownDays.add(date);
+
+    const stats = rawStatsByDate.get(date) ?? createRawDayStats();
+    appendRawSampleStats(stats, sample);
+    rawStatsByDate.set(date, stats);
+  }
+
+  for (const [date, stats] of rawStatsByDate) {
+    const rawDayStats = finalizeRawDayStats(stats);
+    statsByDate.set(date, mergeHeatmapDayStats(statsByDate.get(date), rawDayStats));
   }
 
   const sortedDays = [...knownDays].sort();
@@ -461,11 +626,11 @@ function heatmapDays(snapshot: StorageShape): string[] {
     current = shiftDay(current, 1);
   }
 
-  return days;
+  return { days, statsByDate };
 }
 
-function visibleHeatmapDays(snapshot: StorageShape): { days: string[]; totalPages: number } {
-  const days = heatmapDays(snapshot);
+function visibleHeatmapDays(data: HeatmapData): { days: string[]; totalPages: number } {
+  const { days } = data;
   const totalPages = Math.max(1, Math.ceil(days.length / HEATMAP_PAGE_SIZE));
   heatmapPage = Math.min(heatmapPage, totalPages - 1);
 
@@ -599,76 +764,6 @@ function groupLogItems(items: LogItem[], snapshot: StorageShape): string[] {
   });
 }
 
-function calculateDayUptime(date: string, snapshot: StorageShape): number {
-  const summary = snapshot.daySummaries.find((d) => d.date === date);
-  if (summary) {
-    const entries = Object.values(summary.targets);
-    if (entries.length === 0) return -1;
-    return Math.min(...entries.map((t) => t.uptimePct));
-  }
-
-  const daySamples = snapshot.samples.filter((s) => dayString(s.ts) === date);
-  if (daySamples.length === 0) {
-    return -1;
-  }
-
-  const healthy = daySamples.filter((s) => isHealthySample(s)).length;
-  return Number(((healthy / daySamples.length) * 100).toFixed(2));
-}
-
-function dayTargetStats(
-  date: string,
-  snapshot: StorageShape,
-): Record<string, { total: number; failed: number; uptimePct: number; avgLatency: number }> {
-  const summary = snapshot.daySummaries.find((d) => d.date === date);
-  if (summary) {
-    const result: Record<
-      string,
-      { total: number; failed: number; uptimePct: number; avgLatency: number }
-    > = {};
-    for (const [id, t] of Object.entries(summary.targets)) {
-      result[id] = {
-        total: t.totalPings,
-        failed: t.failedPings,
-        uptimePct: t.uptimePct,
-        avgLatency: t.avgLatency,
-      };
-    }
-    return result;
-  }
-
-  const daySamples = snapshot.samples.filter((s) => dayString(s.ts) === date);
-  const targetIds = new Set<string>();
-  for (const s of daySamples) {
-    for (const id of s.enabledTargetIds) targetIds.add(id);
-  }
-
-  const result: Record<
-    string,
-    { total: number; failed: number; uptimePct: number; avgLatency: number }
-  > = {};
-  for (const id of targetIds) {
-    const relevant = daySamples.filter((s) => s.enabledTargetIds.includes(id));
-    const failed = relevant.filter((s) => s.results[id] === null).length;
-    const latencies = relevant
-      .map((s) => s.results[id])
-      .filter((v): v is number => typeof v === 'number');
-    result[id] = {
-      total: relevant.length,
-      failed,
-      uptimePct:
-        relevant.length === 0
-          ? -1
-          : Number((((relevant.length - failed) / relevant.length) * 100).toFixed(2)),
-      avgLatency:
-        latencies.length > 0
-          ? Number((latencies.reduce((a, b) => a + b, 0) / latencies.length).toFixed(1))
-          : 0,
-    };
-  }
-  return result;
-}
-
 function colorForUptime(uptime: number): string {
   if (uptime < 0) return '#868e96';
   if (uptime >= 99.5) return '#2f9e44';
@@ -682,9 +777,11 @@ function renderHeatmap(snapshot: StorageShape): void {
     return;
   }
 
-  const { days, totalPages } = visibleHeatmapDays(snapshot);
+  const heatmapData = buildHeatmapData(snapshot);
+  const { days, totalPages } = visibleHeatmapDays(heatmapData);
   const rangeLabel =
     days.length > 0 ? formatDayRange(days[days.length - 1], days[0]) : dayString(Date.now());
+  const labelMap = targetLabelById(snapshot);
 
   if (heatmapPrevBtn) {
     heatmapPrevBtn.disabled = heatmapPage === 0;
@@ -703,9 +800,8 @@ function renderHeatmap(snapshot: StorageShape): void {
   heatmapEl.innerHTML = '';
 
   days.forEach((date, idx) => {
-    const uptime = calculateDayUptime(date, snapshot);
-    const stats = dayTargetStats(date, snapshot);
-    const labelMap = targetLabelById(snapshot);
+    const stats = heatmapData.statsByDate.get(date);
+    const uptime = stats?.uptime ?? -1;
     const noData = uptime < 0;
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -740,7 +836,7 @@ function renderHeatmap(snapshot: StorageShape): void {
     if (noData) {
       detail.textContent = `${date}: No data collected`;
     } else {
-      const lines = Object.entries(stats).map(([id, t]) => {
+      const lines = Object.entries(stats.targets).map(([id, t]) => {
         const name = labelMap.get(id) ?? id;
         return `${name}: ${t.total} checks, ${t.failed} failed (${t.uptimePct.toFixed(1)}%), avg ${formatDailyAverageLatency(t.avgLatency, t.total, t.failed)}`;
       });
@@ -760,7 +856,7 @@ function renderChart(snapshot: StorageShape): void {
     return;
   }
 
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const cutoff = Date.now() - 48 * 60 * 60 * 1000;
   chartSamples = snapshot.samples.filter((s) => s.ts >= cutoff).sort((a, b) => a.ts - b.ts);
 
   chartFailureSpans = [];

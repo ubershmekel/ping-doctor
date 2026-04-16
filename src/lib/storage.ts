@@ -6,6 +6,7 @@ import type {
   Sample,
   Settings,
   StorageShape,
+  TargetDaySummary,
   TargetConfig,
   TargetId,
 } from '../types';
@@ -16,7 +17,7 @@ const DB_VERSION = 1;
 const SAMPLES_STORE = 'samples';
 const OUTAGES_STORE = 'outages';
 const DAY_MS = 24 * 60 * 60 * 1000;
-const RETENTION_MS = 7 * DAY_MS;
+const RAW_RETENTION_MS = 2 * DAY_MS;
 
 export const DEFAULT_SETTINGS: Settings = {
   pollIntervalSec: 30,
@@ -261,6 +262,29 @@ async function queryEvents<T>(
   return rows;
 }
 
+async function deleteEvents(storeName: string, indexName: string, maxTs: number): Promise<void> {
+  const db = await getDatabase();
+  const tx = db.transaction(storeName, 'readwrite');
+  const index = tx.objectStore(storeName).index(indexName);
+  const request = index.openCursor(IDBKeyRange.upperBound(maxTs));
+
+  await new Promise<void>((resolve, reject) => {
+    request.onerror = () => reject(request.error ?? new Error('IndexedDB cursor failed'));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) {
+        resolve();
+        return;
+      }
+
+      cursor.delete();
+      cursor.continue();
+    };
+  });
+
+  await transactionDone(tx);
+}
+
 async function clearEventStores(): Promise<void> {
   const db = await getDatabase();
   const tx = db.transaction([SAMPLES_STORE, OUTAGES_STORE], 'readwrite');
@@ -345,6 +369,20 @@ async function listOutages(
   }
 }
 
+async function deleteSamples(maxTs: number, meta: MetaShape): Promise<void> {
+  if (!canUseIndexedDb()) {
+    meta.samples = (meta.samples ?? []).filter((s) => s.ts > maxTs);
+    return;
+  }
+
+  try {
+    await deleteEvents(SAMPLES_STORE, 'ts', maxTs);
+  } catch {
+    idbUnavailable = true;
+    meta.samples = (meta.samples ?? []).filter((s) => s.ts > maxTs);
+  }
+}
+
 async function clearEvents(meta: MetaShape): Promise<void> {
   if (!canUseIndexedDb()) {
     meta.samples = [];
@@ -373,7 +411,7 @@ function toSnapshot(meta: MetaShape, samples: Sample[], outages: Outage[]): Stor
 
 export async function getStorageSnapshot(): Promise<StorageShape> {
   const meta = await readMeta();
-  const cutoff = Date.now() - RETENTION_MS;
+  const cutoff = Date.now() - RAW_RETENTION_MS;
   const [samples, outages] = await Promise.all([
     listSamples(cutoff, null, meta),
     listOutages(cutoff, null, meta),
@@ -498,6 +536,69 @@ function summarizeDay(date: string, samples: Sample[], outages: Outage[]): DaySu
   };
 }
 
+function mergeTargetSummary(
+  current: TargetDaySummary | undefined,
+  next: TargetDaySummary,
+): TargetDaySummary {
+  if (!current) {
+    return next;
+  }
+
+  const totalPings = current.totalPings + next.totalPings;
+  const failedPings = current.failedPings + next.failedPings;
+  const currentSuccesses = current.totalPings - current.failedPings;
+  const nextSuccesses = next.totalPings - next.failedPings;
+  const successes = currentSuccesses + nextSuccesses;
+
+  return {
+    totalPings,
+    failedPings,
+    uptimePct:
+      totalPings === 0 ? -1 : Number((((totalPings - failedPings) / totalPings) * 100).toFixed(2)),
+    avgLatency:
+      successes > 0
+        ? Number(
+            (
+              (current.avgLatency * currentSuccesses + next.avgLatency * nextSuccesses) /
+              successes
+            ).toFixed(1),
+          )
+        : 0,
+  };
+}
+
+function outageKey(outage: Outage): string {
+  return [
+    outage.start,
+    outage.end ?? '',
+    outage.primaryTargetId ?? '',
+    outage.affectedTargetIds.join(','),
+    outage.diagnosis,
+  ].join('|');
+}
+
+function mergeDaySummary(current: DaySummary | undefined, next: DaySummary): DaySummary {
+  if (!current) {
+    return next;
+  }
+
+  const targets = { ...current.targets };
+  for (const [id, target] of Object.entries(next.targets)) {
+    targets[id] = mergeTargetSummary(targets[id], target);
+  }
+
+  const outagesByKey = new Map<string, Outage>();
+  for (const outage of [...current.outages, ...next.outages]) {
+    outagesByKey.set(outageKey(outage), outage);
+  }
+
+  return {
+    date: current.date,
+    targets,
+    outages: [...outagesByKey.values()].sort((a, b) => a.start - b.start),
+  };
+}
+
 function clipOutageToDay(outage: Outage, dayStart: number, dayEnd: number): Outage | null {
   const outageEnd = outage.end ?? dayEnd;
   if (outage.start > dayEnd || outageEnd < dayStart) {
@@ -513,7 +614,7 @@ function clipOutageToDay(outage: Outage, dayStart: number, dayEnd: number): Outa
 
 export async function runRollup(now = Date.now()): Promise<void> {
   const meta = await readMeta();
-  const cutoff = now - RETENTION_MS;
+  const cutoff = now - RAW_RETENTION_MS;
 
   const oldSamples = await listSamples(null, cutoff - 1, meta);
   if (oldSamples.length === 0) {
@@ -539,10 +640,12 @@ export async function runRollup(now = Date.now()): Promise<void> {
       .map((o) => clipOutageToDay(o, dayStart, dayEnd))
       .filter((o): o is Outage => o !== null);
 
-    summaryMap.set(date, summarizeDay(date, samples, dayOutages));
+    const nextSummary = summarizeDay(date, samples, dayOutages);
+    summaryMap.set(date, mergeDaySummary(summaryMap.get(date), nextSummary));
   }
 
   meta.daySummaries = Array.from(summaryMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+  await deleteSamples(cutoff - 1, meta);
   await writeMeta(meta);
 }
 
