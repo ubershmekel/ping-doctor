@@ -97,6 +97,7 @@ chrome.runtime.onStartup.addListener(() => {
   void scheduleAlarm().catch((error) =>
     console.error('[PingDoctor] Failed to schedule alarm on startup', error),
   );
+  void safeRunTick('onStartup');
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {

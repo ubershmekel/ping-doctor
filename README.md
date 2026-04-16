@@ -24,7 +24,7 @@ turns them into a current-status view plus history.
 
 - Whether your configured targets are responding right now
 - Recent failures and slow responses
-- A 24-hour latency view
+- A 48-hour latency and outage chart view
 - A 7-day health heatmap
 - Exportable diagnostics if you want raw data
 
@@ -43,7 +43,7 @@ upstream.
 This is not a perfect network analyzer, but it is good at providing fast,
 practical signal when your connection feels unreliable.
 
-## Important Constraint
+## Technical Constraints
 
 PingDoctor does not use ICMP ping. A target only works if it accepts HTTP or
 HTTPS requests from the browser extension.

@@ -369,6 +369,20 @@ async function listOutages(
   }
 }
 
+async function deleteOutages(maxStart: number, meta: MetaShape): Promise<void> {
+  if (!canUseIndexedDb()) {
+    meta.outages = (meta.outages ?? []).filter((o) => o.start > maxStart);
+    return;
+  }
+
+  try {
+    await deleteEvents(OUTAGES_STORE, 'start', maxStart);
+  } catch {
+    idbUnavailable = true;
+    meta.outages = (meta.outages ?? []).filter((o) => o.start > maxStart);
+  }
+}
+
 async function deleteSamples(maxTs: number, meta: MetaShape): Promise<void> {
   if (!canUseIndexedDb()) {
     meta.samples = (meta.samples ?? []).filter((s) => s.ts > maxTs);
@@ -646,6 +660,7 @@ export async function runRollup(now = Date.now()): Promise<void> {
 
   meta.daySummaries = Array.from(summaryMap.values()).sort((a, b) => a.date.localeCompare(b.date));
   await deleteSamples(cutoff - 1, meta);
+  await deleteOutages(cutoff - 1, meta);
   await writeMeta(meta);
 }
 
