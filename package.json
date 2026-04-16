@@ -1,6 +1,6 @@
 {
   "name": "ping-doctor",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -8,6 +8,7 @@
     "build": "vite build",
     "dev": "vite build --watch",
     "test": "vitest run",
+    "test:typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "release": "vite-node scripts/release.ts"
   },
@@ -16,6 +17,7 @@
     "chartjs-plugin-zoom": "^2.0.1"
   },
   "devDependencies": {
+    "@types/archiver": "^7.0.0",
     "@types/chrome": "^0.0.280",
     "@types/node": "^25.5.0",
     "archiver": "^7.0.1",
