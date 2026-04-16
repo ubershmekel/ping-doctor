@@ -32,7 +32,7 @@ function copyExtensionAssets() {
           copyFileSync(src, dest);
         }
       }
-    }
+    },
   };
 }
 
@@ -46,14 +46,14 @@ export default defineConfig({
       input: {
         'background/worker': resolve(rootDir, 'src/background/worker.ts'),
         'popup/index': resolve(rootDir, 'src/popup/index.html'),
-        'options/index': resolve(rootDir, 'src/options/index.html')
+        'options/index': resolve(rootDir, 'src/options/index.html'),
       },
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: 'chunks/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash][extname]'
-      }
-    }
+        assetFileNames: 'assets/[name]-[hash][extname]',
+      },
+    },
   },
-  plugins: [copyExtensionAssets()]
+  plugins: [copyExtensionAssets()],
 });

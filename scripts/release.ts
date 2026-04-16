@@ -1,11 +1,19 @@
 /**
- * Release script: bumps version, builds the extension, strips source maps, zips dist/.
+ * Release script: runs tests, bumps version, builds the extension, strips source maps, zips dist/, commits, and pushes.
  * Usage: npm run release [patch|minor|major]  (defaults to patch)
  * Output: releases/ping-doctor-<version>.zip (ready for Chrome Web Store upload)
  */
 
 import { execSync } from 'node:child_process';
-import { createWriteStream, mkdirSync, readFileSync, rmSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import {
+  createWriteStream,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import archiver from 'archiver';
@@ -27,6 +35,11 @@ function bumpVersion(version: string, type: BumpType): string {
   if (type === 'minor') return `${major}.${minor + 1}.0`;
   return `${major}.${minor}.${patch + 1}`;
 }
+
+// Run tests first
+console.log('Running tests...');
+execSync('npm test', { stdio: 'inherit', cwd: rootDir });
+console.log('Tests passed.');
 
 // Bump manifest.json
 const manifestPath = join(rootDir, 'manifest.json');
@@ -78,6 +91,13 @@ await new Promise<void>((resolve, reject) => {
   archive.directory(distDir, false);
   archive.finalize();
 });
+
+// Commit version bump and push
+console.log('Committing version bump...');
+execSync(`git add manifest.json package.json`, { stdio: 'inherit', cwd: rootDir });
+execSync(`git commit -m "v${newVersion}"`, { stdio: 'inherit', cwd: rootDir });
+execSync(`git push`, { stdio: 'inherit', cwd: rootDir });
+console.log(`Pushed v${newVersion}`);
 
 console.log(`\nRelease ready: releases/${zipName}`);
 console.log('Upload this file to https://chrome.google.com/webstore/devconsole');

@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { failedTargetIds, diagnose, firstFailedTargetId, isOutageSample } from '../src/lib/diagnose';
+import {
+  failedTargetIds,
+  diagnose,
+  firstFailedTargetId,
+  isOutageSample,
+} from '../src/lib/diagnose';
 
 describe('diagnose', () => {
   it('detects outage when any enabled target is down', () => {
     const sample = {
       ts: Date.now(),
       enabledTargetIds: ['a', 'b', 'c'],
-      results: { a: 12, b: null, c: 31 }
+      results: { a: 12, b: null, c: 31 },
     };
 
     expect(diagnose(sample)).toBe('target');
@@ -19,7 +24,7 @@ describe('diagnose', () => {
     const sample = {
       ts: Date.now(),
       enabledTargetIds: ['a', 'b'],
-      results: { a: 10, b: 20 }
+      results: { a: 10, b: 20 },
     };
 
     expect(diagnose(sample)).toBe('unknown');

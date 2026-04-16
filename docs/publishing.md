@@ -35,9 +35,9 @@ and sign in with your developer account.
    - **Language** — English
 4. Upload screenshots (1280×800 or 640×400) and optionally a promotional tile (440×280).
 5. Set **Visibility**:
-   - *Public* — listed in the store, anyone can install
-   - *Unlisted* — only people with the direct link can install (good for beta testing)
-   - *Private* — only users in your Google group or your own account
+   - _Public_ — listed in the store, anyone can install
+   - _Unlisted_ — only people with the direct link can install (good for beta testing)
+   - _Private_ — only users in your Google group or your own account
 6. Fill in the **Privacy** tab:
    - Declare why `host_permissions: <all_urls>` is needed (the extension fetches
      user-configured URLs to check their availability).
@@ -60,10 +60,10 @@ Google's review typically takes 1–3 business days for a new item.
 
 The reviewer may ask you to justify each permission. Use the table below as a reference.
 
-| Permission | Justification |
-|---|---|
-| `storage` | Persists user-configured endpoints and ping history locally via `chrome.storage.local`. |
-| `alarms` | Schedules recurring background pings via `chrome.alarms` without keeping a persistent page open. |
+| Permission                     | Justification                                                                                                                                                                                |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `storage`                      | Persists user-configured endpoints and ping history locally via `chrome.storage.local`.                                                                                                      |
+| `alarms`                       | Schedules recurring background pings via `chrome.alarms` without keeping a persistent page open.                                                                                             |
 | `host_permissions: <all_urls>` | The user can configure any URL (including local network addresses such as `http://192.168.1.1`) as a ping target. The extension fetches only those URLs. No data is sent to any third party. |
 
 ## Useful links

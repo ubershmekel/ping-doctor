@@ -3,9 +3,7 @@ import { normalizeProbeAddress } from '../src/lib/probe';
 
 describe('normalizeProbeAddress', () => {
   it('keeps explicit schemes unchanged', () => {
-    expect(normalizeProbeAddress('https://example.com/health')).toBe(
-      'https://example.com/health',
-    );
+    expect(normalizeProbeAddress('https://example.com/health')).toBe('https://example.com/health');
     expect(normalizeProbeAddress('http://192.168.1.1')).toBe('http://192.168.1.1');
   });
 

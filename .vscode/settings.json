@@ -14,9 +14,7 @@
   "jestrunner.disablePlaywright": true,
   "jestrunner.nodeTestRunOptions": [],
   "jestrunner.vitestCommand": "node ./node_modules/vitest/vitest.mjs",
-  "jestrunner.vitestRunOptions": [
-    "run"
-  ],
+  "jestrunner.vitestRunOptions": ["run"],
   "jestrunner.defaultTestPatterns": [
     "tests/**/*.test.ts",
     "src/tests/**/*.test.ts",
